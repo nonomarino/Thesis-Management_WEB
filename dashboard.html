@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Σύστημα Διπλωματικών</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+    <nav>
+        <h1>Πανεπιστήμιο - Διπλωματικές (<span id="userRoleDisplay">...</span>)</h1>
+        <div>
+            <span id="userNameDisplay" style="margin-right: 15px;">Φόρτωση...</span>
+            <button class="logout-btn" onclick="logout()">Αποσύνδεση</button>
+        </div>
+    </nav>
+
+    <div class="container">
+        
+        <div class="card">
+            <h3>Καλωσήρθατε</h3>
+            <p>Επιλέξτε μια ενέργεια από το μενού.</p>
+        </div>
+
+        <div id="studentSection" class="hidden">
+            <div class="card">
+                <h3>Φοιτητής: Διαθέσιμα Θέματα</h3>
+                <p>Εδώ θα εμφανίζεται η λίστα θεμάτων προς επιλογή.</p>
+                <button onclick="alert('Θα υλοποιηθεί στο επόμενο βήμα!')">Προβολή Θεμάτων</button>
+            </div>
+            <div class="card">
+                <h3>Η Διπλωματική μου</h3>
+                <p>Κατάσταση αίτησης και βαθμολογία.</p>
+            </div>
+        </div>
+
+        <div id="instructorSection" class="hidden">
+            <div class="card">
+                <h3>Καθηγητής: Διαχείριση Θεμάτων</h3>
+                <button onclick="alert('Θα υλοποιηθεί στο επόμενο βήμα!')">Δημιουργία Νέου Θέματος</button>
+            </div>
+            <div class="card">
+                <h3>Αιτήσεις Φοιτητών</h3>
+                <p>Εδώ θα βλέπετε ποιοι φοιτητές ζήτησαν θέμα.</p>
+            </div>
+        </div>
+
+         <div id="secretariatSection" class="hidden">
+            <div class="card">
+                <h3>Γραμματεία: Στατιστικά</h3>
+                <p>Επισκόπηση συστήματος.</p>
+            </div>
+        </div>
+
+    </div>
+
+    <script src="js/dashboard.js"></script>
+</body>
+</html>
