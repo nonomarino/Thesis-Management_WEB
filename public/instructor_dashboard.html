@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+    <meta charset="UTF-8">
+    <title>Instructor Dashboard - UPatras</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        /* Shared Formal Grey Style */
+        body { margin: 0; font-family: 'Segoe UI', sans-serif; background-color: #f4f4f4; }
+        
+        /* Header Styling */
+        header { background: #333; color: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; }
+        .logo-area { display: flex; align-items: center; gap: 15px; }
+        .logo-area img { height: 40px; }
+        .user-info { font-size: 14px; display: flex; align-items: center; gap: 10px; }
+        
+        .logout-btn { 
+            background: #555; 
+            color: white; 
+            border: none; 
+            padding: 8px 12px; 
+            cursor: pointer; 
+            border-radius: 2px;
+            font-size: 13px;
+        }
+        .logout-btn:hover { background: #777; }
+        
+        /* Navigation Tabs */
+        .nav-bar { background: #fff; padding: 0 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); display: flex; gap: 20px; }
+        .nav-item { padding: 15px 10px; cursor: pointer; color: #555; font-weight: 600; text-decoration: none; border-bottom: 3px solid transparent; }
+        .nav-item:hover { color: #000; }
+        .nav-item.active { border-bottom-color: #333; color: #000; }
+        
+        /* Content Area */
+        .container { padding: 20px; max-width: 1200px; margin: 0 auto; }
+        .section-title { font-size: 22px; margin-bottom: 20px; color: #333; border-bottom: 1px solid #ccc; padding-bottom: 10px; }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="logo-area">
+            <img src="photos\logo.webp" alt="Logo">
+            <span>Πύλη Διδασκόντων</span>
+        </div>
+        <div class="user-info">
+            <span>Καλωσήρθατε, <strong id="user-name">...</strong></span>
+            <button onclick="logout()" class="logout-btn">
+                <i class="fas fa-sign-out-alt"></i> Αποσύνδεση
+            </button>
+        </div>
+    </header>
+
+    <nav class="nav-bar">
+        <a class="nav-item active" href="#topics">Θέματα προς Ανάθεση</a>
+        <a class="nav-item" href="#assign">Ανάθεση σε Φοιτητή</a>
+        <a class="nav-item" href="#theses">Λίστα Διπλωματικών</a>
+        <a class="nav-item" href="#invites">Προσκλήσεις Τριμελούς</a>
+        <a class="nav-item" href="#stats">Στατιστικά</a>
+    </nav>
+
+    <div class="container" id="main-content">
+        <h2 class="section-title">Διαχείριση Θεμάτων</h2>
+        <p>Φόρτωση δεδομένων...</p>
+        </div>
+
+    <script src="js/instructor.js"></script>
+
+    <script>
+        // Logout Function
+        function logout() {
+            fetch('../api/auth.php?action=logout')
+                .then(() => window.location.href = 'index.html');
+        }
+
+        // Check if user is logged in immediately
+        fetch('../api/auth.php?action=check')
+            .then(res => res.json())
+            .then(data => {
+                if(!data.logged_in) {
+                    window.location.href = 'index.html';
+                } else {
+                    document.getElementById('user-name').innerText = data.user.name;
+                }
+            })
+            .catch(err => console.error(err));
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <script src="js/api.js"></script>
+    <script src="js/instructor.js"></script>
+    
+</body>
+</html>

@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Σύστημα Διαχείρισης Διπλωματικών - Πανεπιστήμιο Πατρών</title>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        /* 1. Page Background: Greyish and Formal */
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #e0e2e5; /* Formal Grey */
+        }
+
+        /* 2. The Login Card */
+        .login-card {
+            background-color: #ffffff;
+            width: 100%;
+            max-width: 380px;
+            padding: 50px 40px;
+            border-radius: 2px; /* Sharper corners for formal look */
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1); /* Subtle shadow */
+            text-align: center;
+            border-top: 4px solid #444; /* Dark Grey Accent */
+        }
+
+        /* 3. Logo Styling */
+        .logo-container {
+            margin-bottom: 25px;
+        }
+        .logo-container img {
+            width: 90px;
+            height: auto;
+            opacity: 0.9;
+        }
+        .university-title {
+            color: #222;
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 40px;
+            letter-spacing: 0.5px;
+        }
+
+        /* 4. Input Fields (Clean, no icons on left) */
+        .input-group {
+            position: relative;
+            margin-bottom: 25px;
+            text-align: left;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 12px 15px;
+            border: 1px solid #ccc;
+            border-radius: 2px;
+            outline: none;
+            font-size: 15px;
+            box-sizing: border-box; /* Ensures padding doesn't break width */
+            transition: border-color 0.3s;
+            background-color: #f9f9f9;
+        }
+        
+        .form-control:focus {
+            border-color: #555;
+            background-color: #fff;
+        }
+
+        /* 5. Password Eye Styling (Inside the input) */
+        .eye-icon {
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #888;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .eye-icon:hover {
+            color: #333;
+        }
+
+        /* 6. Login Button (Dark Grey/Black) */
+        .btn-login {
+            width: 100%;
+            padding: 14px;
+            background-color: #333; /* Formal Charcoal */
+            color: white;
+            border: none;
+            border-radius: 2px;
+            font-size: 16px;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 600;
+            transition: background 0.3s;
+            margin-top: 10px;
+        }
+
+        .btn-login:hover {
+            background-color: #000;
+        }
+
+        .error-message {
+            color: #d9534f;
+            font-size: 14px;
+            margin-bottom: 20px;
+            display: none;
+            background: #fdf7f7;
+            padding: 10px;
+            border: 1px solid #f5c6cb;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="login-card">
+        <div class="logo-container">
+            <img src="photos/upatras.jpg" alt="University Logo" style="width: 300px; height: auto;">
+        </div>
+        
+        <div class="university-title">Σύστημα Διαχείρισης Διπλωματικών</div>
+
+        <div id="error-msg" class="error-message"></div>
+
+        <form id="login-form">
+            
+            <div class="input-group">
+                <input type="text" id="username" class="form-control" placeholder="Όνομα Χρήστη (Email)" required>
+            </div>
+
+            <div class="input-group">
+                <input type="password" id="password" class="form-control" placeholder="Κωδικός Χρήστη" required>
+                <span class="eye-icon" onclick="togglePassword()">
+                    <i class="far fa-eye" id="toggleEye"></i>
+                </span>
+            </div>
+
+            <button type="submit" class="btn-login">ΕΙΣΟΔΟΣ</button>
+
+        </form>
+    </div>
+
+    <script>
+        function togglePassword() {
+            const passwordField = document.getElementById('password');
+            const toggleIcon = document.getElementById('toggleEye');
+            
+            if (passwordField.type === 'password') {
+                passwordField.type = 'text';
+                toggleIcon.classList.remove('fa-eye');
+                toggleIcon.classList.add('fa-eye-slash');
+            } else {
+                passwordField.type = 'password';
+                toggleIcon.classList.remove('fa-eye-slash');
+                toggleIcon.classList.add('fa-eye');
+            }
+        }
+    </script>
+
+    <script src="js/app.js"></script>
+</body>
+</html>
