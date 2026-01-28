@@ -27,6 +27,13 @@ function initDashboard(user) {
     if (user.role === 'secretariat') roleName = 'Γραμματεία';
     document.getElementById('userRoleDisplay').innerText = roleName;
 
+    // Για ασφάλεια κρύβουμε τα πάντα
+    // Παρόλο που και το HTML έχει ήδη class="hidden"
+    document.getElementById('studentSection').classList.add('hidden');
+    document.getElementById('instructorSection').classList.add('hidden');
+    document.getElementById('secretariatSection').classList.add('hidden');
+
+    // Αφαιρούμε την ετικέτα hidden
     // Εμφάνιση των κατάλληλων τμημάτων (Sections)
     if (user.role === 'student') {
         document.getElementById('studentSection').classList.remove('hidden');
