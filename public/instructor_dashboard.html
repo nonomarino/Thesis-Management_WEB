@@ -5,41 +5,84 @@
     <title>Instructor Dashboard - UPatras</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        /* Shared Formal Grey Style */
-        body { margin: 0; font-family: 'Segoe UI', sans-serif; background-color: #f4f4f4; }
+        /* --- GENERAL STYLES (SHARED) --- */
+        body { margin: 0; font-family: 'Segoe UI', 'Roboto', sans-serif; background-color: #f0f2f5; color: #444; }
         
-        /* Header Styling */
-        header { background: #333; color: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; }
-        .logo-area { display: flex; align-items: center; gap: 15px; }
-        .logo-area img { height: 40px; }
-        .user-info { font-size: 14px; display: flex; align-items: center; gap: 10px; }
-        
-        .logout-btn { 
-            background: #555; 
-            color: white; 
-            border: none; 
-            padding: 8px 12px; 
-            cursor: pointer; 
-            border-radius: 2px;
-            font-size: 13px;
+        /* HEADER */
+        header { background: #2c3e50; color: white; padding: 10px 30px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .logo-area { display: flex; align-items: center; gap: 15px; font-size: 18px; font-weight: 600; letter-spacing: 0.5px; }
+        .logo-area img { height: 35px; }
+        .user-info { font-size: 14px; display: flex; align-items: center; gap: 15px; }
+        .logout-btn { background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); padding: 6px 12px; cursor: pointer; border-radius: 4px; transition: all 0.3s; font-size:13px; }
+        .logout-btn:hover { background: rgba(255,255,255,0.2); }
+
+        /* NAVIGATION */
+        .nav-bar { background: #fff; padding: 0 30px; box-shadow: 0 2px 5px rgba(0,0,0,0.03); display: flex; gap: 30px; }
+        .nav-item { padding: 15px 5px; cursor: pointer; color: #666; font-weight: 500; border-bottom: 3px solid transparent; transition: all 0.3s; text-decoration: none; font-size: 15px; }
+        .nav-item:hover { color: #2c3e50; }
+        .nav-item.active { border-bottom-color: #3498db; color: #3498db; font-weight: 600; }
+
+        /* CONTENT */
+        .container { padding: 30px 20px; max-width: 1000px; margin: 0 auto; }
+        .section-title { font-size: 22px; color: #2c3e50; margin-bottom: 15px; font-weight: 600; border-left: 5px solid #3498db; padding-left: 15px; }
+
+        /* --- CARDS & FORMS (COMPACT MODERN STYLE) --- */
+        .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 5px 20px rgba(0,0,0,0.05); }
+
+        /* Table Styles within Card */
+        .table { width: 100%; border-collapse: collapse; }
+        .table th { text-align: left; padding: 12px; border-bottom: 2px solid #f0f0f0; color: #7f8c8d; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; }
+        .table td { padding: 12px; border-bottom: 1px solid #f0f0f0; color: #2c3e50; font-size: 14px; vertical-align: middle; }
+        .table tr:last-child td { border-bottom: none; }
+        .table tr:hover td { background-color: #fafafa; }
+
+        /* Form Container (Smooth Look) */
+        .modern-form-container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.05);
+            overflow: hidden;
+            max-width: 700px; /* Μίκρυνε λίγο το πλάτος */
+            margin: 0 auto;
         }
-        .logout-btn:hover { background: #777; }
+
+        .form-header {
+            background: linear-gradient(135deg, #3498db, #2c3e50);
+            padding: 20px; /* Μειωμένο padding */
+            text-align: center;
+            color: white;
+        }
+        .form-header h3 { margin: 0; font-size: 20px; font-weight: 600; }
+        .form-header p { margin: 5px 0 0; opacity: 0.9; font-size: 13px; }
+
+        .form-body { padding: 25px; /* Μειωμένο padding από 40px */ }
+
+        /* Input Groups with Icons */
+        .input-group { position: relative; margin-bottom: 20px; /* Λιγότερο κενό ανάμεσα στα πεδία */ }
+        .input-group label { display: block; margin-bottom: 6px; font-weight: 600; font-size: 13px; color: #555; }
+        .input-group i { position: absolute; left: 15px; top: 40px; color: #95a5a6; transition: color 0.3s; font-size: 14px; }
         
-        /* Navigation Tabs */
-        .nav-bar { background: #fff; padding: 0 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); display: flex; gap: 20px; }
-        .nav-item { padding: 15px 10px; cursor: pointer; color: #555; font-weight: 600; text-decoration: none; border-bottom: 3px solid transparent; }
-        .nav-item:hover { color: #000; }
-        .nav-item.active { border-bottom-color: #333; color: #000; }
+        .custom-input {
+            width: 100%; padding: 10px 10px 10px 40px; border: 2px solid #ecf0f1; border-radius: 8px; font-size: 14px; transition: all 0.3s; box-sizing: border-box; background: #fafafa; font-family: inherit;
+        }
+        .custom-input:focus { outline: none; border-color: #3498db; background: white; box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1); }
+        .custom-input:focus + i { color: #3498db; }
+
+        /* Buttons */
+        .btn { padding: 8px 18px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; transition: transform 0.1s, box-shadow 0.2s; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+        .btn:active { transform: scale(0.98); }
+        .btn-primary { background: #3498db; color: white; box-shadow: 0 4px 6px rgba(52, 152, 219, 0.2); }
+        .btn-primary:hover { background: #2980b9; }
         
-        /* Content Area */
-        .container { padding: 20px; max-width: 1200px; margin: 0 auto; }
-        .section-title { font-size: 22px; margin-bottom: 20px; color: #333; border-bottom: 1px solid #ccc; padding-bottom: 10px; }
+        /* Badges */
+        .badge { display: inline-block; padding: 4px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
+        
     </style>
 </head>
 <body>
     <header>
         <div class="logo-area">
-            <img src="photos\logo.webp" alt="Logo">
+            <img src="photos/logo.webp" alt="Logo" onerror="this.style.display='none'">
             <span>Πύλη Διδασκόντων</span>
         </div>
         <div class="user-info">
@@ -61,33 +104,22 @@
     <div class="container" id="main-content">
         <h2 class="section-title">Διαχείριση Θεμάτων</h2>
         <p>Φόρτωση δεδομένων...</p>
-        </div>
-
-    <script src="js/instructor.js"></script>
+    </div>
 
     <script>
-        // Logout Function
         function logout() {
-            fetch('../api/auth.php?action=logout')
-                .then(() => window.location.href = 'index.html');
+            fetch('../api/auth.php?action=logout').then(() => window.location.href = 'index.html');
         }
 
-        // Check if user is logged in immediately
         fetch('../api/auth.php?action=check')
             .then(res => res.json())
             .then(data => {
-                if(!data.logged_in) {
-                    window.location.href = 'index.html';
-                } else {
-                    document.getElementById('user-name').innerText = data.user.name;
-                }
+                if(!data.logged_in) window.location.href = 'index.html';
+                else document.getElementById('user-name').innerText = data.user.name;
             })
             .catch(err => console.error(err));
     </script>
 
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
-    <script src="js/api.js"></script>
     <script src="js/instructor.js"></script>
     
 </body>
