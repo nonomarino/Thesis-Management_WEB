@@ -41,7 +41,14 @@ try {
         
         $filePath = null;
         if (isset($_FILES['pdf_file']) && $_FILES['pdf_file']['error'] === UPLOAD_ERR_OK) {
-            $newFileName = uniqid('thesis_') . '.pdf';
+            $ext = pathinfo($_FILES['pdf_file']['name'], PATHINFO_EXTENSION);
+            
+            // --- ΝΕΑ ΟΝΟΜΑΤΟΔΟΣΙΑ (DESC_instr...) ---
+            // Μορφή: DESC_instr[ID]_[YYYYMMDD-HHMM]_[RANDOM].pdf
+            $timestamp = date('Ymd-Hi');
+            $randomHash = substr(uniqid(), -5);
+            $newFileName = "DESC_instr{$user_id}_{$timestamp}_{$randomHash}." . $ext;
+
             if (!is_dir('../public/uploads/')) mkdir('../public/uploads/', 0777, true);
             if (move_uploaded_file($_FILES['pdf_file']['tmp_name'], '../public/uploads/' . $newFileName)) {
                 $filePath = $newFileName;
@@ -61,7 +68,14 @@ try {
         $desc  = $_POST['description'] ?? '';
         
         if (isset($_FILES['pdf_file']) && $_FILES['pdf_file']['error'] === UPLOAD_ERR_OK) {
-            $newFileName = uniqid('thesis_') . '.pdf';
+            $ext = pathinfo($_FILES['pdf_file']['name'], PATHINFO_EXTENSION);
+
+            // --- ΝΕΑ ΟΝΟΜΑΤΟΔΟΣΙΑ (DESC_topic...) ---
+            // Μορφή: DESC_topic[ID]_[YYYYMMDD-HHMM]_[RANDOM].pdf
+            $timestamp = date('Ymd-Hi');
+            $randomHash = substr(uniqid(), -5);
+            $newFileName = "DESC_topic{$id}_{$timestamp}_{$randomHash}." . $ext;
+
             if (move_uploaded_file($_FILES['pdf_file']['tmp_name'], '../public/uploads/' . $newFileName)) {
                 $stmt = $pdo->prepare("UPDATE theses SET title = ?, description = ?, file_path = ? WHERE id = ? AND supervisor_id = ?");
                 $stmt->execute([$title, $desc, $newFileName, $id, $user_id]);
@@ -75,11 +89,11 @@ try {
         exit;
     }
 
-    // ACTION: Delete topic (NEW)
+    // ACTION: Delete topic
     elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'delete_topic') {
         $id = $_POST['id'] ?? '';
 
-        // Check if topic exists and has no student assigned (optional safety check)
+        // Check if topic exists
         $check = $pdo->prepare("SELECT status FROM theses WHERE id = ? AND supervisor_id = ?");
         $check->execute([$id, $user_id]);
         $topic = $check->fetch();
@@ -87,12 +101,6 @@ try {
         if (!$topic) {
             echo json_encode(['success' => false, 'error' => 'Topic not found']);
             exit;
-        }
-
-        // Prevent deleting if assigned (Optional - remove if you want to allow force delete)
-        if ($topic['status'] !== 'available' && $topic['status'] !== 'free' && $topic['status'] !== NULL && $topic['status'] !== '') {
-             // Αν θες να επιτρέπεις διαγραφή ακόμα κι αν έχει ανατεθεί, σβήσε αυτό το if
-             // Αλλά συνήθως πρέπει πρώτα να γίνει revoke.
         }
 
         $stmt = $pdo->prepare("DELETE FROM theses WHERE id = ? AND supervisor_id = ?");
@@ -141,7 +149,6 @@ try {
         if ($update->rowCount() > 0) {
             echo json_encode(['success' => true]);
         } else {
-            // Αν δεν άλλαξε τίποτα, σημαίνει ότι δεν βρέθηκε το θέμα ή ήταν ήδη ανατεθειμένο
             echo json_encode(['success' => false, 'error' => 'Η ανάθεση απέτυχε. Ελέγξτε αν το θέμα είναι δικό σας.']);
         }
         exit;
