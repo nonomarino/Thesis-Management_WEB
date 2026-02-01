@@ -430,15 +430,31 @@ try {
     // NEW: GRADING SYSTEM ACTIONS
     // =============================================================
     
-    // 1. Enable Grading (Supervisor only)
+    // Enable Grading (RESTRICTED: Requires Protocol Number from Secretary)
     elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'enable_grading') {
         $tid = $_POST['thesis_id'];
         
-        // Verify Supervisor
-        $chk = $pdo->prepare("SELECT id FROM theses WHERE id = ? AND supervisor_id = ?");
+        // 1. Verify Supervisor AND fetch the Protocol Number
+        // NOTE: Ensure 'protocol_number' is the correct column name in your DB
+        $chk = $pdo->prepare("SELECT id, general_assembly_protocol FROM theses WHERE id = ? AND supervisor_id = ?");
         $chk->execute([$tid, $user_id]);
-        if (!$chk->fetch()) { echo json_encode(['success'=>false, 'error'=>'Not supervisor']); exit; }
+        $thesisData = $chk->fetch();
 
+        if (!$thesisData) { 
+            echo json_encode(['success'=>false, 'error'=>'Δεν είστε επιβλέπων ή η διπλωματική δεν βρέθηκε.']); 
+            exit; 
+        }
+
+        // 2. THE NEW RESTRICTION CHECK: Is Protocol Number empty/null?
+        if (empty($thesisData['protocol_number'])) {
+            echo json_encode([
+                'success' => false, 
+                'error' => 'Δεν μπορείτε να ενεργοποιήσετε τη βαθμολόγηση. Εκκρεμεί η απόδοση Α.Π. από τη Γραμματεία.'
+            ]);
+            exit;
+        }
+
+        // 3. Proceed if check passes
         $pdo->prepare("UPDATE theses SET status = 'under_examination' WHERE id = ?")->execute([$tid]);
         $pdo->prepare("INSERT INTO thesis_logs (thesis_id, action, timestamp) VALUES (?, 'Grading Enabled by Supervisor', NOW())")->execute([$tid]);
         

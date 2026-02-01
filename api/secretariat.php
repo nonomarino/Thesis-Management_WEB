@@ -15,7 +15,9 @@ $action = $_GET['action'] ?? '';
 
 try {
 
-    // LIST THESES (Active or Under Examination)
+    // =================================================================================
+    // 1. LIST THESES (Active & Under Examination)
+    // =================================================================================
     if ($_SERVER['REQUEST_METHOD'] === 'GET' && $action === 'list_theses') {
         $stmt = $pdo->prepare("
             SELECT t.id, t.title, t.status, t.assigned_at,
@@ -31,12 +33,17 @@ try {
         $stmt->execute();
         $theses = $stmt->fetchAll();
 
-        // Calculate Time Elapsed
+        // Calculate simple time elapsed string
         foreach ($theses as &$t) {
             $t['time_elapsed'] = '-';
             if ($t['assigned_at']) {
-                $diff = (new DateTime($t['assigned_at']))->diff(new DateTime());
-                $t['time_elapsed'] = ($diff->y > 0 ? $diff->y.' έτη, ' : '') . $diff->m . ' μήνες';
+                $d1 = new DateTime($t['assigned_at']);
+                $d2 = new DateTime();
+                $diff = $d1->diff($d2);
+                
+                if ($diff->y > 0) $t['time_elapsed'] = $diff->y . ' έτη, ' . $diff->m . ' μήνες';
+                elseif ($diff->m > 0) $t['time_elapsed'] = $diff->m . ' μήνες, ' . $diff->d . ' μέρες';
+                else $t['time_elapsed'] = $diff->d . ' ημέρες';
             }
         }
 
@@ -44,31 +51,77 @@ try {
         exit;
     }
 
-    // GET DETAILS
+    // =================================================================================
+    // 2. GET DETAILS (For Modal) - UPDATED
+    // =================================================================================
     if ($_SERVER['REQUEST_METHOD'] === 'GET' && $action === 'get_thesis_details') {
         $id = $_GET['id'] ?? 0;
+        
+        // A. Basic Info (Thesis + Student + Supervisor)
+        // Fetches repository_link, description, final_grade etc. via t.*
         $stmt = $pdo->prepare("
             SELECT t.*, 
-                   u.first_name as student_first, u.last_name as student_last, sp.student_am
+                   u.first_name as student_first, u.last_name as student_last, u.username as student_email, sp.student_am,
+                   s.first_name as sup_first, s.last_name as sup_last
             FROM theses t
             LEFT JOIN users u ON t.student_id = u.id
             LEFT JOIN student_profiles sp ON u.id = sp.user_id
+            LEFT JOIN users s ON t.supervisor_id = s.id
             WHERE t.id = ?
         ");
         $stmt->execute([$id]);
         $thesis = $stmt->fetch();
-        
-        echo json_encode(['success' => true, 'thesis' => $thesis]);
+
+        if (!$thesis) {
+            echo json_encode(['success' => false, 'error' => 'Not found']);
+            exit;
+        }
+
+        // B. Committee Members (The 2 other members)
+        // Fetching from 'committee_members' table using 'professor_id'
+        $committee = [];
+        try {
+            $stmt = $pdo->prepare("
+                SELECT u.first_name, u.last_name 
+                FROM committee_members cm 
+                JOIN users u ON cm.professor_id = u.id 
+                WHERE cm.thesis_id = ?
+            ");
+            $stmt->execute([$id]);
+            $committee = $stmt->fetchAll();
+        } catch (Exception $e) { 
+            // Table might be empty or missing
+        }
+
+        // C. Exact Time Elapsed Calculation
+        $timeElapsed = 'Μη διαθέσιμο';
+        if ($thesis['assigned_at']) {
+            $d1 = new DateTime($thesis['assigned_at']);
+            $d2 = new DateTime();
+            $diff = $d1->diff($d2);
+            $timeElapsed = "";
+            if ($diff->y > 0) $timeElapsed .= $diff->y . " έτη, ";
+            if ($diff->m > 0) $timeElapsed .= $diff->m . " μήνες, ";
+            $timeElapsed .= $diff->d . " ημέρες";
+        }
+        $thesis['time_elapsed_txt'] = $timeElapsed;
+
+        echo json_encode([
+            'success' => true, 
+            'thesis' => $thesis, 
+            'committee' => $committee 
+        ]);
         exit;
     }
 
-    // UPDATE PROTOCOL (ΑΠ ΓΣ)
+    // =================================================================================
+    // 3. ACTIONS
+    // =================================================================================
+    
+    // Update Protocol (Α.Π.)
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'update_protocol') {
         $in = json_decode(file_get_contents('php://input'), true);
-        
-        // Ensure column exists or handle generically (assuming column exists based on requirement)
-        // Note: You might need to add `general_assembly_protocol` column to your DB if not there.
-        // SQL: ALTER TABLE theses ADD COLUMN general_assembly_protocol VARCHAR(50) NULL;
+        if (empty($in['protocol'])) { echo json_encode(['success'=>false]); exit; }
         
         $stmt = $pdo->prepare("UPDATE theses SET general_assembly_protocol = ? WHERE id = ?");
         $stmt->execute([$in['protocol'], $in['id']]);
@@ -76,37 +129,37 @@ try {
         exit;
     }
 
-    // CANCEL ASSIGNMENT
+    // Cancel Assignment
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'cancel_assignment') {
         $in = json_decode(file_get_contents('php://input'), true);
-        $reason = "Ακύρωση από Γραμματεία. Απόφαση ΓΣ: " . $in['ga_info'];
-
-        // Reset to available, remove student, log reason
-        // Assuming there is a field for log or just status change
-        // We will simple unassign.
+        $reason = "Ακύρωση από Γραμματεία. Απόφαση ΓΣ: " . ($in['ga_info'] ?? '-');
         
-        $stmt = $pdo->prepare("
+        $pdo->prepare("
             UPDATE theses 
-            SET student_id = NULL, status = 'available', assigned_at = NULL,
-                description = CONCAT(description, '\n[ΙΣΤΟΡΙΚΟ: ', ? , ']') 
+            SET student_id = NULL, status = 'available', assigned_at = NULL, 
+                description = CONCAT(description, '\n[CANCELED: ', ?, ']') 
             WHERE id = ?
-        ");
-        $stmt->execute([$reason, $in['id']]);
+        ")->execute([$reason, $in['id']]);
+        
+        // Clear committee members and invites
+        $pdo->prepare("DELETE FROM committee_members WHERE thesis_id = ?")->execute([$in['id']]);
+        $pdo->prepare("DELETE FROM committee_invites WHERE thesis_id = ?")->execute([$in['id']]);
+        
         echo json_encode(['success' => true]);
         exit;
     }
 
-    // FINALIZE THESIS
+    // Finalize (Set to Completed)
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'finalize_thesis') {
         $in = json_decode(file_get_contents('php://input'), true);
         
-        // Double check conditions server-side
+        // Optional Check: Ensure Grade and Link exist before finalizing
         $chk = $pdo->prepare("SELECT final_grade, repository_link FROM theses WHERE id = ?");
         $chk->execute([$in['id']]);
         $t = $chk->fetch();
-
-        if (!$t['final_grade'] || !$t['repository_link']) {
-            echo json_encode(['success' => false, 'error' => 'Missing grade or repo link']);
+        
+        if (empty($t['final_grade']) || empty($t['repository_link'])) {
+            echo json_encode(['success' => false, 'error' => 'Λείπει βαθμός ή σύνδεσμος Νημερτής.']);
             exit;
         }
 
@@ -116,29 +169,23 @@ try {
         exit;
     }
 
-    // IMPORT DATA (Simple Implementation)
+    // Import Data
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'import_data') {
-        if (!isset($_FILES['json_file'])) throw new Exception("No file uploaded");
-        
+        if (!isset($_FILES['json_file'])) throw new Exception("No file");
         $json = file_get_contents($_FILES['json_file']['tmp_name']);
         $data = json_decode($json, true);
-
         if (!$data) throw new Exception("Invalid JSON");
 
-        // Example JSON structure expectation: [{"role": "student", "email": "...", "first": "...", "last": "..."}]
         $pwd = password_hash("12345", PASSWORD_DEFAULT);
-        $count = 0;
-
-        foreach ($data as $user) {
-            // Basic insert logic - adapt to your JSON structure
-            if (isset($user['email']) && isset($user['role'])) {
+        $cnt = 0;
+        foreach ($data as $u) {
+            if (isset($u['email'], $u['role'])) {
                 $stmt = $pdo->prepare("INSERT IGNORE INTO users (username, password, first_name, last_name, role) VALUES (?, ?, ?, ?, ?)");
-                $stmt->execute([$user['email'], $pwd, $user['first_name']??'', $user['last_name']??'', $user['role']]);
-                $count++;
+                $stmt->execute([$u['email'], $pwd, $u['first_name']??'', $u['last_name']??'', $u['role']]);
+                $cnt++;
             }
         }
-
-        echo json_encode(['success' => true, 'count' => $count]);
+        echo json_encode(['success' => true, 'count' => $cnt]);
         exit;
     }
 

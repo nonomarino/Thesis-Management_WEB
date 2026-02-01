@@ -2,8 +2,7 @@
 
 document.addEventListener('DOMContentLoaded', () => {
     const navItems = document.querySelectorAll('.nav-item');
-    const mainContent = document.getElementById('main-content');
-
+    
     // Navigation Logic
     navItems.forEach(item => {
         item.addEventListener('click', (e) => {
@@ -17,12 +16,11 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // Default Load
-    loadThesesList();
+    loadThesesList(); // Default load
 });
 
 // ==========================================
-// 1. LIST THESES (Active & Under Exam)
+// 1. LIST THESES
 // ==========================================
 async function loadThesesList() {
     const container = document.getElementById('main-content');
@@ -31,6 +29,11 @@ async function loadThesesList() {
     try {
         const res = await fetch('../api/secretariat.php?action=list_theses');
         const data = await res.json();
+
+        if (!data.success) {
+            container.innerHTML = '<p style="color:red">Σφάλμα ανάκτησης δεδομένων.</p>';
+            return;
+        }
 
         let html = `
             <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -44,7 +47,7 @@ async function loadThesesList() {
                             <th>Φοιτητής</th>
                             <th>Επιβλέπων</th>
                             <th>Κατάσταση</th>
-                            <th>Χρόνος</th>
+                            <th>Χρόνος (περ.)</th>
                             <th>Ενέργεια</th>
                         </tr>
                     </thead>
@@ -65,7 +68,7 @@ async function loadThesesList() {
                         <td>${t.time_elapsed}</td>
                         <td>
                             <button class="btn btn-primary" onclick="openManageModal(${t.id})">
-                                <i class="fas fa-cog"></i> Διαχείριση
+                                <i class="fas fa-eye"></i> Λεπτομέρειες
                             </button>
                         </td>
                     </tr>
@@ -78,29 +81,58 @@ async function loadThesesList() {
         html += `</tbody></table></div>`;
         container.innerHTML = html;
 
-    } catch (err) {
-        console.error(err);
-        container.innerHTML = '<p style="color:red">Σφάλμα φόρτωσης.</p>';
+    } catch (err) { 
+        console.error(err); 
+        container.innerHTML = '<p style="color:red">Σφάλμα συστήματος.</p>'; 
     }
 }
 
 // ==========================================
-// 2. MANAGE MODAL & ACTIONS
+// 2. MANAGE MODAL (DETAILS & ACTIONS)
 // ==========================================
 async function openManageModal(id) {
     const modal = document.getElementById('manage-modal');
     const content = document.getElementById('modal-content');
-    content.innerHTML = 'Φόρτωση...';
+    content.innerHTML = '<p>Φόρτωση...</p>';
     modal.style.display = 'flex';
 
     try {
         const res = await fetch(`../api/secretariat.php?action=get_thesis_details&id=${id}`);
         const data = await res.json();
-        const t = data.thesis;
+        
+        if (!data.success) {
+            content.innerHTML = '<p style="color:red">Δεν βρέθηκαν λεπτομέρειες.</p>';
+            return;
+        }
 
+        const t = data.thesis;
+        const committeeMembers = data.committee || [];
+
+        // --- Build 3-Member Committee List ---
+        let committeeHtml = '<ul style="padding-left:20px; margin:5px 0;">';
+        
+        // 1. Supervisor
+        committeeHtml += `<li><strong>${t.sup_first} ${t.sup_last}</strong> (Επιβλέπων)</li>`;
+
+        // 2. Members (from committee_members table)
+        if (committeeMembers.length > 0) {
+            committeeMembers.forEach(m => {
+                committeeHtml += `<li>${m.first_name} ${m.last_name} (Μέλος)</li>`;
+            });
+        } else {
+            committeeHtml += '<li style="color:#777; font-style:italic;">(Αναμονή για τα υπόλοιπα μέλη)</li>';
+        }
+        committeeHtml += '</ul>';
+
+        // Repository Link
+        let repoHtml = t.repository_link 
+            ? `<a href="${t.repository_link}" target="_blank" style="font-weight:bold; color:#2980b9;">${t.repository_link}</a>` 
+            : '<span style="color:#999;">Δεν έχει καταχωρηθεί από τον φοιτητή.</span>';
+
+        // Actions Logic
         let actionsHtml = '';
 
-        // --- CASE A: ACTIVE (ΕΝΕΡΓΗ) ---
+        // --- CASE A: ACTIVE ---
         if (t.status === 'active') {
             actionsHtml = `
                 <div style="background:#f9f9f9; padding:15px; border-radius:5px; margin-bottom:15px;">
@@ -124,36 +156,67 @@ async function openManageModal(id) {
             `;
         }
 
-        // --- CASE B: UNDER EXAMINATION (ΥΠΟ ΕΞΕΤΑΣΗ) ---
+        // --- CASE B: UNDER EXAMINATION ---
         else if (t.status === 'under_examination') {
             const hasGrade = t.final_grade !== null;
             const hasRepo = t.repository_link !== null && t.repository_link !== '';
             
             actionsHtml = `
-                <div style="background:#e8f5e9; padding:15px; border-radius:5px;">
+                <div style="background:#e8f5e9; padding:15px; border-radius:5px; border:1px solid #c8e6c9;">
                     <h4 style="margin-top:0;">Ολοκλήρωση Διπλωματικής</h4>
-                    <ul style="font-size:13px;">
-                        <li style="color:${hasGrade?'green':'red'}">Βαθμός Καταχωρημένος: <strong>${hasGrade ? t.final_grade : 'ΟΧΙ'}</strong></li>
-                        <li style="color:${hasRepo?'green':'red'}">Σύνδεσμος Νημερτής: <strong>${hasRepo ? 'ΝΑΙ' : 'ΟΧΙ'}</strong></li>
+                    <ul style="font-size:13px; margin-bottom:10px;">
+                        <li style="color:${hasGrade?'green':'red'}">
+                            Βαθμός Καταχωρημένος: <strong>${hasGrade ? t.final_grade : 'ΟΧΙ'}</strong>
+                        </li>
+                        <li style="color:${hasRepo?'green':'red'}">
+                            Σύνδεσμος Νημερτής: <strong>${hasRepo ? 'ΝΑΙ' : 'ΟΧΙ'}</strong>
+                        </li>
                     </ul>
                     ${(hasGrade && hasRepo) 
-                        ? `<button class="btn btn-success" onclick="finalizeThesis(${t.id})">Ορισμός ως Περατωμένη</button>`
-                        : `<button class="btn btn-secondary" disabled style="opacity:0.6; cursor:not-allowed;">Εκκρεμούν Προϋποθέσεις</button>`
+                        ? `<button class="btn btn-success" style="width:100%;" onclick="finalizeThesis(${t.id})"><i class="fas fa-check"></i> Ορισμός ως Περατωμένη</button>`
+                        : `<button class="btn btn-secondary" disabled style="opacity:0.6; cursor:not-allowed; width:100%;">Εκκρεμούν Προϋποθέσεις</button>`
                     }
                 </div>
             `;
         }
 
+        // Render Content
         content.innerHTML = `
-            <h3 style="color:#2c3e50;">${t.title}</h3>
-            <p><strong>Φοιτητής:</strong> ${t.student_first} ${t.student_last} (${t.student_am})</p>
+            <h3 style="color:#2c3e50; margin-top:0; border-bottom:1px solid #eee; padding-bottom:10px;">${t.title}</h3>
+            
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px; margin-bottom:15px;">
+                <div>
+                    <p><strong>Φοιτητής:</strong><br> ${t.student_first} ${t.student_last} (${t.student_am})</p>
+                    <p><strong>Κατάσταση:</strong><br> ${t.status === 'active' ? 'Ενεργή' : 'Υπό Εξέταση'}</p>
+                </div>
+                <div>
+                    <p><strong>Χρόνος από Ανάθεση:</strong><br> ${t.time_elapsed_txt}</p>
+                    <p><strong>Ημ/νία Ανάθεσης:</strong><br> ${new Date(t.assigned_at).toLocaleDateString()}</p>
+                </div>
+            </div>
+
+            <div style="background:#f8f9fa; padding:10px; border-radius:5px; margin-bottom:15px;">
+                <strong>Περιγραφή:</strong>
+                <p style="font-size:0.9em; color:#555; margin:5px 0;">${t.description || '-'}</p>
+            </div>
+
+            <div style="margin-bottom:15px; border-left: 4px solid #3498db; padding-left: 10px;">
+                <h4 style="margin:0 0 5px 0;">Τριμελής Επιτροπή</h4>
+                ${committeeHtml}
+            </div>
+
+            <div style="margin-bottom:20px; padding:10px; border:1px dashed #3498db; border-radius:5px; background:#f0f8ff;">
+                <strong>Σύνδεσμος Αποθετηρίου (Νημερτής):</strong><br>
+                ${repoHtml}
+            </div>
+
             <hr>
             ${actionsHtml}
         `;
 
-    } catch (err) {
-        console.error(err);
-        content.innerHTML = 'Σφάλμα.';
+    } catch (err) { 
+        console.error(err); 
+        content.innerHTML = '<p style="color:red">Σφάλμα κατά την εμφάνιση των λεπτομερειών.</p>'; 
     }
 }
 
@@ -161,17 +224,21 @@ function closeModal() {
     document.getElementById('manage-modal').style.display = 'none';
 }
 
-// --- ACTIONS IMPLEMENTATION ---
+// ==========================================
+// 3. ACTION FUNCTIONS
+// ==========================================
 
 async function saveProtocol(id) {
     const proto = document.getElementById('protocol-num').value;
     if(!proto) return alert("Συμπληρώστε τον ΑΠ.");
     
-    await fetch('../api/secretariat.php?action=update_protocol', {
-        method: 'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ id, protocol: proto })
-    });
-    alert("Αποθηκεύτηκε!");
+    try {
+        await fetch('../api/secretariat.php?action=update_protocol', {
+            method: 'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ id, protocol: proto })
+        });
+        alert("Αποθηκεύτηκε επιτυχώς!");
+    } catch(e) { alert("Σφάλμα."); }
 }
 
 async function cancelAssignment(id) {
@@ -180,29 +247,39 @@ async function cancelAssignment(id) {
     
     if(!confirm("Είστε σίγουροι για την ακύρωση της ανάθεσης;")) return;
 
-    await fetch('../api/secretariat.php?action=cancel_assignment', {
-        method: 'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ id, ga_info: ga })
-    });
-    alert("Η ανάθεση ακυρώθηκε.");
-    closeModal();
-    loadThesesList();
+    try {
+        await fetch('../api/secretariat.php?action=cancel_assignment', {
+            method: 'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ id, ga_info: ga })
+        });
+        alert("Η ανάθεση ακυρώθηκε.");
+        closeModal();
+        loadThesesList();
+    } catch(e) { alert("Σφάλμα."); }
 }
 
 async function finalizeThesis(id) {
-    if(!confirm("Οριστική περάτωση διπλωματικής;")) return;
+    if(!confirm("Οριστική περάτωση διπλωματικής; \nΗ ενέργεια αυτή δεν αναιρείται εύκολα.")) return;
 
-    await fetch('../api/secretariat.php?action=finalize_thesis', {
-        method: 'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ id })
-    });
-    alert("Η διπλωματική ολοκληρώθηκε!");
-    closeModal();
-    loadThesesList();
+    try {
+        const res = await fetch('../api/secretariat.php?action=finalize_thesis', {
+            method: 'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ id })
+        });
+        const data = await res.json();
+        
+        if (data.success) {
+            alert("Η διπλωματική ολοκληρώθηκε!");
+            closeModal();
+            loadThesesList();
+        } else {
+            alert("Σφάλμα: " + (data.error || "Άγνωστο"));
+        }
+    } catch(e) { alert("Συστημικό Σφάλμα."); }
 }
 
 // ==========================================
-// 3. IMPORT DATA (JSON)
+// 4. IMPORT DATA
 // ==========================================
 function renderImportPage() {
     const container = document.getElementById('main-content');
@@ -230,7 +307,7 @@ async function uploadJson() {
             body: formData
         });
         const data = await res.json();
-        if(data.success) alert("Επιτυχής εισαγωγή!");
-        else alert("Σφάλμα: " + data.error);
+        if(data.success) alert("Επιτυχής εισαγωγή! Εγγραφές: " + data.count);
+        else alert("Σφάλμα: " + (data.error || "Invalid Data"));
     } catch(e) { console.error(e); alert("System Error"); }
 }
