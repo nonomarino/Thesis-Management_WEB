@@ -135,6 +135,7 @@ try {
         $roleFilter = $_GET['role'] ?? 'all';
         $statusFilter = $_GET['status'] ?? 'all';
         
+        // Updated to include committee_invites in the check for 'member' role
         $sql = "
             SELECT DISTINCT t.id, t.title, t.status, t.final_grade, t.created_at,
                    u.first_name as student_name, u.last_name as student_surname,
@@ -144,8 +145,8 @@ try {
                    END as my_role
             FROM theses t
             LEFT JOIN users u ON t.student_id = u.id
-            LEFT JOIN committee_members cm ON t.id = cm.thesis_id
-            WHERE (t.supervisor_id = :uid2 OR (cm.professor_id = :uid3 AND cm.invitation_status = 'accepted'))
+            LEFT JOIN committee_invites ci ON t.id = ci.thesis_id
+            WHERE (t.supervisor_id = :uid2 OR (ci.professor_id = :uid3 AND ci.status = 'accepted'))
         ";
 
         if ($statusFilter !== 'all') {
@@ -155,7 +156,7 @@ try {
         if ($roleFilter === 'supervisor') {
             $sql .= " AND t.supervisor_id = :uid4 ";
         } elseif ($roleFilter === 'member') {
-            $sql .= " AND cm.professor_id = :uid5 ";
+            $sql .= " AND ci.professor_id = :uid5 ";
         }
 
         $sql .= " ORDER BY t.created_at DESC";
@@ -195,36 +196,42 @@ try {
             exit;
         }
 
-        // 2. Committee Info
+        // 2. Committee Info (From committee_invites where accepted)
         $stmt = $pdo->prepare("
-            SELECT u.first_name, u.last_name, u.username as email, cm.invitation_status
-            FROM committee_members cm
-            JOIN users u ON cm.professor_id = u.id
-            WHERE cm.thesis_id = ?
+            SELECT u.first_name, u.last_name, u.username as email, ci.status as invitation_status
+            FROM committee_invites ci
+            JOIN users u ON ci.professor_id = u.id
+            WHERE ci.thesis_id = ? AND ci.status != 'cancelled'
         ");
         $stmt->execute([$tid]);
         $committee = $stmt->fetchAll();
         
-        // 3. Logs (Corrected to use 'action' and 'timestamp')
+        // 3. Logs
         $stmt = $pdo->prepare("SELECT action, timestamp FROM thesis_logs WHERE thesis_id = ? ORDER BY timestamp DESC");
         $stmt->execute([$tid]);
         $logs = $stmt->fetchAll();
         
-        echo json_encode(['success' => true, 'thesis' => $thesis, 'committee' => $committee, 'logs' => $logs]);
+        echo json_encode([
+            'success' => true, 
+            'thesis' => $thesis, 
+            'committee' => $committee, 
+            'logs' => $logs
+        ]);
         exit;
     }
 
     // =================================================================================
-    // SECTION 4: INVITATIONS
+    // SECTION 4: INVITATIONS (Handling Student Choices)
     // =================================================================================
     elseif ($_SERVER['REQUEST_METHOD'] === 'GET' && $action === 'list_pending_invites') {
+        // Fetch invites from 'committee_invites' table
         $stmt = $pdo->prepare("
-            SELECT cm.id as invite_id, cm.created_at as invitation_date, 
+            SELECT ci.id as invite_id, ci.created_at as invitation_date, 
                    t.title, u.first_name, u.last_name
-            FROM committee_members cm
-            JOIN theses t ON cm.thesis_id = t.id
+            FROM committee_invites ci
+            JOIN theses t ON ci.thesis_id = t.id
             LEFT JOIN users u ON t.student_id = u.id
-            WHERE cm.professor_id = ? AND cm.invitation_status = 'pending'
+            WHERE ci.professor_id = ? AND ci.status = 'pending'
         ");
         $stmt->execute([$user_id]);
         echo json_encode(['success' => true, 'data' => $stmt->fetchAll()]);
@@ -233,24 +240,36 @@ try {
 
     elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'respond_invite') {
         $inviteId = $_POST['invite_id'];
-        $response = $_POST['response']; 
+        $response = $_POST['response']; // 'accepted' or 'rejected'
 
-        $stmt = $pdo->prepare("UPDATE committee_members SET invitation_status = ?, response_date = NOW() WHERE id = ? AND professor_id = ?");
+        // Update the status in committee_invites
+        $stmt = $pdo->prepare("UPDATE committee_invites SET status = ? WHERE id = ? AND professor_id = ?");
         $stmt->execute([$response, $inviteId, $user_id]);
 
+        // Logic: If accepted, check if committee is full (2 members)
         if ($response === 'accepted') {
-            $stmt = $pdo->prepare("SELECT thesis_id FROM committee_members WHERE id = ?");
+            $stmt = $pdo->prepare("SELECT thesis_id FROM committee_invites WHERE id = ?");
             $stmt->execute([$inviteId]);
             $thesisId = $stmt->fetchColumn();
 
-            $stmt = $pdo->prepare("SELECT COUNT(*) FROM committee_members WHERE thesis_id = ? AND invitation_status = 'accepted'");
+            // Count accepted invites for this thesis
+            $stmt = $pdo->prepare("SELECT COUNT(*) FROM committee_invites WHERE thesis_id = ? AND status = 'accepted'");
             $stmt->execute([$thesisId]);
             $count = $stmt->fetchColumn();
 
+            // Rule: If 2 members accepted -> Activate Thesis
             if ($count >= 2) {
+                // 1. Set Status to Active
                 $pdo->prepare("UPDATE theses SET status = 'active', activated_at = NOW() WHERE id = ?")->execute([$thesisId]);
-                $pdo->prepare("INSERT INTO thesis_logs (thesis_id, action) VALUES (?, 'Status changed to Active (Committee Filled)')")->execute([$thesisId]);
-                $pdo->prepare("UPDATE committee_members SET invitation_status = 'cancelled' WHERE thesis_id = ? AND invitation_status = 'pending'")->execute([$thesisId]);
+                
+                // 2. Log Action
+                $pdo->prepare("INSERT INTO thesis_logs (thesis_id, action) VALUES (?, 'Thesis Activated (Committee Filled)')")->execute([$thesisId]);
+                
+                // 3. Cancel any other pending invites for this thesis
+                $pdo->prepare("UPDATE committee_invites SET status = 'cancelled' WHERE thesis_id = ? AND status = 'pending'")->execute([$thesisId]);
+                
+                // 4. (Optional) Sync to committee_members table if your DB uses it separately
+                $pdo->prepare("INSERT INTO committee_members (thesis_id, professor_id) SELECT thesis_id, professor_id FROM committee_invites WHERE thesis_id = ? AND status = 'accepted'")->execute([$thesisId]);
             }
         }
         echo json_encode(['success' => true]);

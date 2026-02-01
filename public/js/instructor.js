@@ -94,15 +94,13 @@ window.loadMyTopics = async function() {
         } else {
             currentTopics.forEach(t => {
                 const studentName = t.first_name ? `${t.first_name} ${t.last_name}` : '-';
-                const statusGreek = getGreekStatus(t.status);
                 
-                // Status Logic for Colors
-                let badgeColor = '#95a5a6'; // grey default
-                if(t.status === 'assigned') badgeColor = '#3498db';
-                else if(t.status === 'active') badgeColor = '#28a745';
-                else if(t.status === 'completed') badgeColor = '#2ecc71';
-
-                let statusBadge = `<span class="badge" style="background:${badgeColor}; color:white;">${statusGreek}</span>`;
+                // Status Logic
+                let statusBadge = '';
+                if(t.status === 'assigned') statusBadge = '<span class="badge" style="background:#3498db; color:white;">Υπό ανάθεση</span>';
+                else if(t.status === 'active') statusBadge = '<span class="badge" style="background:#28a745; color:white;">Ενεργή</span>';
+                else if(t.status === 'completed') statusBadge = '<span class="badge" style="background:#2ecc71; color:white;">Ολοκληρωμένη</span>';
+                else statusBadge = '<span class="badge" style="background:#95a5a6; color:white;">Ελεύθερο</span>';
 
                 let fileLink = '-';
                 if (t.file_path) {
@@ -465,7 +463,7 @@ window.openThesisModal = async function(id) {
         const d = await res.json();
         const t = d.thesis;
         
-        // Committee List
+        // Committee List (Using Invites table from API)
         let commHtml = '<p style="color:#777; font-style:italic;">Δεν έχουν οριστεί ακόμα.</p>';
         if(d.committee && d.committee.length > 0) {
             commHtml = '<ul style="list-style:none; padding:0;">' + 
