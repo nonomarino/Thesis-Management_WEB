@@ -1,5 +1,3 @@
-// public/js/instructor.js
-
 let currentTopics = []; 
 let allThesesList = []; 
 
@@ -44,12 +42,10 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    loadMyTopics(); // Default view
+    loadMyTopics(); 
 });
 
-// =============================================================
 // 1. TOPICS MANAGEMENT (HOME TAB)
-// =============================================================
 
 window.loadMyTopics = async function() {
     const mainContent = document.getElementById('main-content');
@@ -99,16 +95,12 @@ window.loadMyTopics = async function() {
                 let displayDate = createdDate.toLocaleDateString();
                 let canCancelActive = false;
 
-                // Αν είναι active, ελέγχουμε το assigned_at (που επιστρέφεται από το SQL, βεβαιώσου ότι το SELECT στο instructor.php φέρνει το assigned_at)
-                // ΣΗΜΕΙΩΣΗ: Πρέπει να προσθέσεις το `t.assigned_at` στο SELECT query του instructor.php αν δεν υπάρχει.
-                // Αν το API δεν το έστελνε, θα υποθέσουμε ότι το φέρνει.
-                // Το JSON από το προηγούμενο response δεν είχε ρητά το assigned_at στο SELECT list_my_topics.
-                // Θα χρειαστεί μικρή διόρθωση στο SQL του instructor.php (δες παρακάτω).
+                // Αν είναι active, ελέγχουμε το assigned_at
                 
                 // Υποθέτουμε ότι το assigned_at υπάρχει στα data
-                if (t.status === 'active' && t.created_at) { // Χρησιμοποιώ created_at προσωρινά αν λείπει το assigned_at, αλλά το σωστό είναι assigned_at
+                if (t.status === 'active' && t.created_at) {
                      // Logic correction: Check date diff
-                     const assignDateObj = new Date(t.created_at); // Fallback usually, logic requires assigned_at
+                     const assignDateObj = new Date(t.created_at); 
                      const now = new Date();
                      const diffTime = Math.abs(now - assignDateObj);
                      const diffYears = diffTime / (1000 * 60 * 60 * 24 * 365);
@@ -143,7 +135,7 @@ window.loadMyTopics = async function() {
                     `;
                 }
 
-                // ** LOGIC: Promote to Exam **
+                // Promote to Exam 
                 if (t.status === 'active') {
                     actions += `
                         <button class="btn" onclick="promoteToExam(${t.id})" title="Αλλαγή σε 'Υπό Εξέταση'" style="background-color: #fef9e7; color: #f39c12; border:1px solid #f39c12; padding:4px 8px; font-size:12px; margin-left:5px;">
@@ -152,7 +144,7 @@ window.loadMyTopics = async function() {
                     `;
                 }
 
-                // ** NEW LOGIC: Cancel Active Assignment (2 Years) **
+                // Cancel Active Assignment (2 Years) 
                 if (t.status === 'active' && canCancelActive) {
                     actions += `
                         <button class="btn" onclick="cancelActiveAssignment(${t.id})" title="Ακύρωση Ανάθεσης (Λόγω 2ετίας)" style="background-color: #fff5f5; color: #c0392b; border:1px solid #c0392b; padding:4px 8px; font-size:12px; margin-left:5px;">
@@ -190,7 +182,6 @@ window.loadMyTopics = async function() {
     }
 }
 
-// ** NEW FUNCTION IMPLEMENTATION **
 window.cancelActiveAssignment = async function(id) {
     if(!confirm("ΠΡΟΣΟΧΗ: Η ανάθεση θα ακυρωθεί οριστικά λόγω παρέλευσης 2ετίας.\nΕίστε σίγουροι;")) return;
 
@@ -224,7 +215,7 @@ window.cancelActiveAssignment = async function(id) {
         alert("System Error");
     }
 }
-// NEW FUNCTION: Promote to Under Examination
+// Promote to Under Examination
 window.promoteToExam = async function(id) {
     if(!confirm("Να αλλάξει η κατάσταση σε 'Υπό Εξέταση'; Αυτό θα επιτρέψει στον φοιτητή να αναρτήσει το υλικό.")) return;
     
@@ -243,7 +234,8 @@ window.promoteToExam = async function(id) {
     } catch(err) { console.error(err); alert("System Error"); }
 }
 
-// *** SUPERVISOR REVIEW PAGE with ANNOUNCEMENT GENERATOR ***
+//Supervisor review page with announcement generator 
+
 window.renderSupervisorReviewPage = function(id) {
     const topic = currentTopics.find(t => t.id == id);
     if (!topic) return;
@@ -393,7 +385,7 @@ window.copyAnnouncement = function() {
     alert("Το κείμενο αντιγράφηκε!");
 }
 
-// B. FORM RENDERER
+//Form renderer
 window.renderTopicForm = function(id = null) {
     const mainContent = document.getElementById('main-content');
     
@@ -483,7 +475,7 @@ window.deleteTopic = async function(id) {
     } catch(err) { console.error(err); }
 }
 
-// 2. ASSIGNMENT PAGE
+//assignement page
 window.renderAssignmentPage = async function() {
     const mainContent = document.getElementById('main-content');
     mainContent.innerHTML = '<h3>Φόρτωση...</h3>';
@@ -603,7 +595,7 @@ window.revokeAssignment = async function(id) {
     renderAssignmentPage();
 }
 
-// 3. LIST ALL THESES & DETAILS
+//LIST ALL THESES & DETAILS
 window.renderThesesListPage = function() {
     const mainContent = document.getElementById('main-content');
     
@@ -728,7 +720,7 @@ window.openThesisModal = async function(id) {
             `;
         }
         
-        // --- START GRADING LOGIC PASTE ---
+        //START GRADING
         const myId = d.current_user_id; 
         const isSupervisor = (t.supervisor_id == myId);
         let gradingHtml = '';
@@ -785,7 +777,7 @@ window.openThesisModal = async function(id) {
                 </div>
             `;
         }
-        // --- END GRADING LOGIC PASTE ---
+        
 
        c.innerHTML = `
             <h3 style="color:#2c3e50; margin-top:0;">${t.title}</h3>
@@ -871,10 +863,7 @@ window.renderStatsPage = async () => {
     `;
 }
 
-// ==========================================
-// NEW: GRADING HELPER FUNCTIONS
-// ==========================================
-
+//GRADING HELPER FUNCTIONS
 window.enableGrading = async function(id) {
     if(!confirm("Είστε σίγουρος ότι θέλετε να ενεργοποιήσετε τη βαθμολόγηση;")) return;
     
@@ -886,8 +875,8 @@ window.enableGrading = async function(id) {
         const d = await res.json();
         if(d.success) {
             alert("Η βαθμολόγηση ενεργοποιήθηκε.");
-            openThesisModal(id); // Reload modal to show form
-            // Optional: loadMyTopics() if you want to refresh list
+            openThesisModal(id); 
+        
         } else {
             alert("Error: " + (d.error || "Unknown"));
         }
@@ -907,7 +896,7 @@ window.submitGrade = async function(id) {
         const d = await res.json();
         if(d.success) {
             alert("Ο βαθμός καταχωρήθηκε.");
-            openThesisModal(id); // Reload modal to see update
+            openThesisModal(id); 
         } else {
             alert("Error: " + (d.error || "Unknown"));
         }

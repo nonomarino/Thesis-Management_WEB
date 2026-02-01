@@ -15,11 +15,9 @@ $user_id = $_SESSION['user_id'];
 $action = $_GET['action'] ?? '';
 
 try {
-    // =================================================================================
-    // SECTION 1: TOPIC MANAGEMENT
-    // =================================================================================
+    // SECTION 1: Management Topic
     
-    // ACTION: List my topics
+    // List my topics
     if ($_SERVER['REQUEST_METHOD'] === 'GET' && $action === 'list_my_topics') {
         $stmt = $pdo->prepare("
             SELECT t.id, t.title, t.description, t.status, t.created_at, t.assigned_at, t.file_path, t.student_id,
@@ -91,7 +89,7 @@ try {
         exit;
     }
 
-    // *** NEW ACTION: PROMOTE TO UNDER EXAMINATION (SUPERVISOR ONLY) ***
+    //  PROMOTE TO UNDER EXAMINATION (SUPERVISOR ONLY)
     elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'promote_to_exam') {
         $thesis_id = $_POST['thesis_id'];
         
@@ -113,13 +111,13 @@ try {
         exit;
     }
 
-    // *** NEW ACTION: CANCEL ACTIVE ASSIGNMENT (AFTER 2 YEARS) ***
+    // CANCEL ACTIVE ASSIGNMENT (AFTER 2 YEARS) 
     elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'cancel_active_assignment') {
         $thesis_id = $_POST['thesis_id'];
         $ga_num = $_POST['ga_num'];
         $ga_year = $_POST['ga_year'];
         
-        // 1. Έλεγχος: Είναι Active; Ανήκει στον καθηγητή; Πότε ανατέθηκε;
+        // 1. Έλεγχος: If Active; Belongs to Instructor
         $stmt = $pdo->prepare("SELECT id, assigned_at FROM theses WHERE id = ? AND supervisor_id = ? AND status = 'active'");
         $stmt->execute([$thesis_id, $user_id]);
         $thesis = $stmt->fetch();
@@ -140,8 +138,8 @@ try {
         }
 
         // 3. Εκτέλεση Ακύρωσης
-        // Καταχωρούμε τα στοιχεία ακύρωσης και επαναφέρουμε σε 'available'
-        $cancelRef = "$ga_num/$ga_year"; // Συνδυασμός Αριθμού/Έτους
+        // Καταχωρούμε τα στοιχεία ακύρωσης και επαναφέρουμε status σε 'available'
+        $cancelRef = "$ga_num/$ga_year"; 
         
         $update = $pdo->prepare("
             UPDATE theses 
@@ -166,9 +164,7 @@ try {
         exit;
     }
 
-    // =================================================================================
     // SECTION 2: ASSIGNMENT LOGIC
-    // =================================================================================
     elseif ($_SERVER['REQUEST_METHOD'] === 'GET' && $action === 'get_available_topics') {
         $stmt = $pdo->prepare("SELECT id, title FROM theses WHERE supervisor_id = ? AND (student_id IS NULL OR status = 'available')");
         $stmt->execute([$user_id]);
@@ -179,9 +175,8 @@ try {
     elseif ($_SERVER['REQUEST_METHOD'] === 'GET' && $action === 'search_student') {
         $term = $_GET['term'] ?? '';
         
-        // Τροποποιημένο Query:
         // Επιλέγουμε φοιτητές που ταιριάζουν στο όνομα/ΑΜ
-        // ΚΑΙ ταυτόχρονα το ID τους ΔΕΝ υπάρχει στον πίνακα theses (σε κατάσταση που υποδηλώνει δέσμευση)
+        // ΚΑΙ ταυτόχρονα το ID τους ΔΕΝ υπάρχει στον πίνακα theses 
         $stmt = $pdo->prepare("
             SELECT u.id, u.first_name, u.last_name, u.username as email, sp.student_am
             FROM users u
@@ -230,7 +225,7 @@ try {
             // 2. Διαγραφή όλων των προσκλήσεων (pending, accepted, rejected) για αυτό το θέμα
             $pdo->prepare("DELETE FROM committee_invites WHERE thesis_id = ?")->execute([$thesis_id]);
 
-            // 3. Διαγραφή τυχόν μελών που είχαν ήδη οριστεί (για σιγουριά)
+            // 3. Διαγραφή τυχόν μελών που είχαν ήδη οριστεί
             $pdo->prepare("DELETE FROM committee_members WHERE thesis_id = ?")->execute([$thesis_id]);
 
             // 4. Καταγραφή στο Log
@@ -243,9 +238,7 @@ try {
         exit;
     }
 
-    // =================================================================================
     // SECTION 3: LIST ALL THESES & DETAILS
-    // =================================================================================
     elseif ($_SERVER['REQUEST_METHOD'] === 'GET' && $action === 'list_all_theses') {
         $roleFilter = $_GET['role'] ?? 'all';
         $statusFilter = $_GET['status'] ?? 'all';
@@ -324,7 +317,7 @@ try {
         $stmt->execute([$tid]);
         $logs = $stmt->fetchAll();
         
-        // --- ADD THIS BLOCK FOR GRADING ---
+        // Grading System: Fetch individual grades by committee members
         $grades = [];
         try {
             $stmt = $pdo->prepare("
@@ -336,16 +329,15 @@ try {
             $stmt->execute([$tid]);
             $grades = $stmt->fetchAll();
         } catch (Exception $e) { }
-        // ----------------------------------
 
-        // UPDATE your echo line to include 'grades' and 'current_user_id':
+        // UPDATE 'grades' and 'current_user_id':
         echo json_encode([
             'success' => true, 
             'thesis' => $thesis, 
             'committee' => $committee, 
             'logs' => $logs, 
-            'grades' => $grades,             // <--- Add this
-            'current_user_id' => $user_id    // <--- Add this
+            'grades' => $grades,             
+            'current_user_id' => $user_id 
         ]);
         exit;
 
@@ -358,9 +350,7 @@ try {
         exit;
     }
 
-    // =================================================================================
     // SECTION 4: INVITATIONS
-    // =================================================================================
     elseif ($_SERVER['REQUEST_METHOD'] === 'GET' && $action === 'list_pending_invites') {
         $stmt = $pdo->prepare("
             SELECT ci.id as invite_id, ci.created_at as invitation_date, 
@@ -402,9 +392,7 @@ try {
         exit;
     }
 
-    // =================================================================================
     // SECTION 5: STATS
-    // =================================================================================
     elseif ($_SERVER['REQUEST_METHOD'] === 'GET' && $action === 'get_stats') {
         $stmt = $pdo->prepare("
             SELECT 
@@ -425,17 +413,13 @@ try {
         ]);
         exit;
     }
-
-    // =============================================================
-    // NEW: GRADING SYSTEM ACTIONS
-    // =============================================================
     
-    // Enable Grading (RESTRICTED: Requires Protocol Number from Secretary)
+    // Enable Grading 
+    // RESTRICTED: Requires Protocol Number (Α.Π) from Secretary
     elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'enable_grading') {
         $tid = $_POST['thesis_id'];
         
         // 1. Verify Supervisor AND fetch the Protocol Number
-        // NOTE: Ensure 'protocol_number' is the correct column name in your DB
         $chk = $pdo->prepare("SELECT id, general_assembly_protocol FROM theses WHERE id = ? AND supervisor_id = ?");
         $chk->execute([$tid, $user_id]);
         $thesisData = $chk->fetch();
@@ -445,8 +429,8 @@ try {
             exit; 
         }
 
-        // 2. THE NEW RESTRICTION CHECK: Is Protocol Number empty/null?
-        if (empty($thesisData['protocol_number'])) {
+        // 2. Restriction Check: Is Protocol Number empty/null?
+        if (empty($thesisData['general_assembly_protocol'])) {
             echo json_encode([
                 'success' => false, 
                 'error' => 'Δεν μπορείτε να ενεργοποιήσετε τη βαθμολόγηση. Εκκρεμεί η απόδοση Α.Π. από τη Γραμματεία.'
@@ -462,12 +446,12 @@ try {
         exit;
     }
 
-   // 2. Submit Grade (Using instructor_id)
+   // Submit Grade (Using instructor_id)
     elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'submit_grade') {
         $tid = $_POST['thesis_id'];
         $grade = $_POST['grade'];
 
-        // A. Έλεγχος Δικαιωμάτων (Επιβλέπων ή Μέλος)
+        // Α. Έλεγχος Δικαιωμάτων (Supervisor / Member)
         $isSup = $pdo->prepare("SELECT id FROM theses WHERE id=? AND supervisor_id=?"); 
         $isSup->execute([$tid, $user_id]);
         
@@ -479,8 +463,8 @@ try {
             exit;
         }
 
-        // B. Καταχώρηση του Ατομικού Βαθμού
-        // Χρησιμοποιούμε ON DUPLICATE KEY UPDATE ώστε αν ο καθηγητής ξαναστείλει βαθμό, να διορθωθεί ο παλιός
+        // Β. Καταχώρηση Protocol Number
+        // Χρήση ON DUPLICATE KEY UPDATE ώστε αν ο καθηγητής ξαναστείλει βαθμό, να γίνει overwright
         $sql = "INSERT INTO thesis_grades (thesis_id, instructor_id, grade, submitted_at) VALUES (?, ?, ?, NOW()) 
                 ON DUPLICATE KEY UPDATE grade = VALUES(grade), submitted_at = NOW()";
         $pdo->prepare($sql)->execute([$tid, $user_id, $grade]);
@@ -488,9 +472,7 @@ try {
         // Log action
         $pdo->prepare("INSERT INTO thesis_logs (thesis_id, action, timestamp) VALUES (?, 'Grade submitted', NOW())")->execute([$tid]);
 
-        // =================================================================
-        // C. ΑΥΤΟΜΑΤΟΣ ΥΠΟΛΟΓΙΣΜΟΣ ΤΕΛΙΚΟΥ ΒΑΘΜΟΥ (TRIGGER LOGIC)
-        // =================================================================
+        // Γ. ΑΥΤΟΜΑΤΟΣ ΥΠΟΛΟΓΙΣΜΟΣ ΤΕΛΙΚΟΥ ΒΑΘΜΟΥ
         
         // 1. Μετράμε πόσοι καθηγητές έχουν βαθμολογήσει
         $stmtCount = $pdo->prepare("SELECT COUNT(*) FROM thesis_grades WHERE thesis_id = ?");
@@ -504,18 +486,16 @@ try {
             $stmtAvg->execute([$tid]);
             $average = $stmtAvg->fetchColumn();
             
-            // Στρογγυλοποίηση σε 2 δεκαδικά (π.χ. 8.33)
+            // Στρογγυλοποίηση σε 2 δεκαδικά
             $finalGrade = round($average, 2);
 
             // Ενημέρωση του πίνακα 'theses' με τον τελικό βαθμό
-            // Αυτό είναι το κλειδί για να το δει ο φοιτητής!
             $stmtUpdate = $pdo->prepare("UPDATE theses SET final_grade = ? WHERE id = ?");
             $stmtUpdate->execute([$finalGrade, $tid]);
 
             // Καταγραφή στο log ότι βγήκε ο τελικός βαθμός
             $pdo->prepare("INSERT INTO thesis_logs (thesis_id, action, timestamp) VALUES (?, 'Final Grade Calculated Automatically', NOW())")->execute([$tid]);
         }
-        // =================================================================
 
         echo json_encode(['success' => true]);
         exit;

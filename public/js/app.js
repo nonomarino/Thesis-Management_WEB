@@ -2,12 +2,12 @@ document.addEventListener('DOMContentLoaded', () => {
     
     const loginForm = document.getElementById('login-form');
     
-    // 1. Check if user is ALREADY logged in when the page loads
+    // 1. Check if user is already logged in 
     fetch('../api/auth.php?action=check')
         .then(response => response.json())
         .then(data => {
             if (data.logged_in) {
-                // User is already logged in, redirect them immediately
+                // User is already logged in, redirect
                 redirectToDashboard(data.user.role);
             }
         })
@@ -37,7 +37,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const result = await response.json();
 
                 if (response.ok) {
-                    // Login Success: Redirect based on the role received from PHP
+                    // Login Success
                     redirectToDashboard(result.role);
                 } else {
                     // Login Failed: Show error message

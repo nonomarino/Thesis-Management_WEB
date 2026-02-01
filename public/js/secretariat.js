@@ -1,5 +1,3 @@
-// public/js/secretariat.js
-
 document.addEventListener('DOMContentLoaded', () => {
     const navItems = document.querySelectorAll('.nav-item');
     
@@ -19,9 +17,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadThesesList(); // Default load
 });
 
-// ==========================================
 // 1. LIST THESES
-// ==========================================
 async function loadThesesList() {
     const container = document.getElementById('main-content');
     container.innerHTML = '<p>Φόρτωση λίστας...</p>';
@@ -87,9 +83,7 @@ async function loadThesesList() {
     }
 }
 
-// ==========================================
-// 2. MANAGE MODAL (DETAILS & ACTIONS)
-// ==========================================
+// 2. MANAGE MODAL (details & actions)
 async function openManageModal(id) {
     const modal = document.getElementById('manage-modal');
     const content = document.getElementById('modal-content');
@@ -108,13 +102,13 @@ async function openManageModal(id) {
         const t = data.thesis;
         const committeeMembers = data.committee || [];
 
-        // --- Build 3-Member Committee List ---
+        // Build 3-Member Committee List
         let committeeHtml = '<ul style="padding-left:20px; margin:5px 0;">';
         
         // 1. Supervisor
         committeeHtml += `<li><strong>${t.sup_first} ${t.sup_last}</strong> (Επιβλέπων)</li>`;
 
-        // 2. Members (from committee_members table)
+        // 2. Members ( join from committee_members table)
         if (committeeMembers.length > 0) {
             committeeMembers.forEach(m => {
                 committeeHtml += `<li>${m.first_name} ${m.last_name} (Μέλος)</li>`;
@@ -132,7 +126,7 @@ async function openManageModal(id) {
         // Actions Logic
         let actionsHtml = '';
 
-        // --- CASE A: ACTIVE ---
+        //CASE A: ACTIVE
         if (t.status === 'active') {
             actionsHtml = `
                 <div style="background:#f9f9f9; padding:15px; border-radius:5px; margin-bottom:15px;">
@@ -156,7 +150,7 @@ async function openManageModal(id) {
             `;
         }
 
-        // --- CASE B: UNDER EXAMINATION ---
+        // CASE B: UNDER EXAMINATION
         else if (t.status === 'under_examination') {
             const hasGrade = t.final_grade !== null;
             const hasRepo = t.repository_link !== null && t.repository_link !== '';
@@ -224,10 +218,7 @@ function closeModal() {
     document.getElementById('manage-modal').style.display = 'none';
 }
 
-// ==========================================
 // 3. ACTION FUNCTIONS
-// ==========================================
-
 async function saveProtocol(id) {
     const proto = document.getElementById('protocol-num').value;
     if(!proto) return alert("Συμπληρώστε τον ΑΠ.");
@@ -278,9 +269,7 @@ async function finalizeThesis(id) {
     } catch(e) { alert("Συστημικό Σφάλμα."); }
 }
 
-// ==========================================
 // 4. IMPORT DATA
-// ==========================================
 function renderImportPage() {
     const container = document.getElementById('main-content');
     container.innerHTML = `

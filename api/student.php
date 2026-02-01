@@ -1,10 +1,9 @@
 <?php
-// api/student.php
+
 session_start();
 header('Content-Type: application/json');
 require 'db.php';
 
-// Check Auth
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'student') {
     http_response_code(403);
     echo json_encode(['error' => 'Unauthorized']);
@@ -16,13 +15,11 @@ $action = $_GET['action'] ?? '';
 
 try {
     
-    // =========================================================================
     // ACTION: Get My Thesis Details
-    // =========================================================================
+
     if ($_SERVER['REQUEST_METHOD'] === 'GET' && $action === 'get_my_thesis') {
         
-        // Fetch Thesis, Supervisor AND Exam Details
-        // UPDATED: Added final_grade, repository_link, general_assembly_protocol
+        // Fetch Thesis, Supervisor & Exam Details
         $stmt = $pdo->prepare("
             SELECT t.id, t.title, t.description, t.status, t.assigned_at, t.file_path, t.supervisor_id,
                    t.draft_file_path, t.external_links,
@@ -80,9 +77,7 @@ try {
         exit;
     }
 
-    // =========================================================================
     // ACTION: Save Examination Details
-    // =========================================================================
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'save_exam_details') {
         $input = json_decode(file_get_contents('php://input'), true);
         
@@ -102,11 +97,11 @@ try {
         $examRow = $exists->fetch();
 
         if ($examRow) {
-            // UPDATE
+            // Update
             $stmt = $pdo->prepare("UPDATE thesis_exam SET exam_date=?, exam_method=?, exam_location=? WHERE thesis_id=?");
             $stmt->execute([$exam_date, $exam_method, $exam_loc, $thesis_id]);
         } else {
-            // INSERT
+            // Insert
             $stmt = $pdo->prepare("INSERT INTO thesis_exam (thesis_id, exam_date, exam_method, exam_location) VALUES (?, ?, ?, ?)");
             $stmt->execute([$thesis_id, $exam_date, $exam_method, $exam_loc]);
         }
@@ -115,9 +110,7 @@ try {
         exit;
     }
 
-    // =========================================================================
     // ACTION: Upload Draft File
-    // =========================================================================
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'upload_draft') {
         $thesis_id = $_POST['thesis_id'];
         $check = $pdo->prepare("SELECT id FROM theses WHERE id = ? AND student_id = ?");
@@ -142,9 +135,7 @@ try {
         exit;
     }
 
-    // =========================================================================
     // ACTION: Save External Links
-    // =========================================================================
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'save_links') {
         $data = json_decode(file_get_contents('php://input'), true);
         $check = $pdo->prepare("SELECT id FROM theses WHERE id = ? AND student_id = ?");
@@ -155,9 +146,7 @@ try {
         echo json_encode(['success' => true]); exit;
     }
 
-    // =========================================================================
-    // ACTION: Committee Invites Logic
-    // =========================================================================
+    // ACTION: Committee Invites Management
     if ($_SERVER['REQUEST_METHOD'] === 'GET' && $action === 'get_available_instructors') {
         $supervisor_id = $_GET['supervisor_id'] ?? 0;
         $stmt = $pdo->prepare("SELECT id, first_name, last_name FROM users WHERE role = 'instructor' AND id != ? ORDER BY last_name ASC");
@@ -195,9 +184,7 @@ try {
         echo json_encode(['success' => true, 'message' => "$inserted_count invites sent."]); exit;
     }
 
-    // =========================================================================
     // ACTION: Profile Management
-    // =========================================================================
     if ($_SERVER['REQUEST_METHOD'] === 'GET' && $action === 'get_profile') {
         $stmt = $pdo->prepare("SELECT u.first_name, u.last_name, u.username, sp.* FROM users u LEFT JOIN student_profiles sp ON u.id = sp.user_id WHERE u.id = ?");
         $stmt->execute([$user_id]); 
@@ -214,10 +201,6 @@ try {
 
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'update_profile') {
         $input = json_decode(file_get_contents('php://input'), true);
-        
-        // Update or Insert profile if not exists (handling handled by ON DUPLICATE KEY or similar logic in real apps, here assuming row exists from seed)
-        // Note: The seed creates the profile row. If not, we might need INSERT.
-        // Let's assume the row exists for simplicity based on seed.php
         $stmt = $pdo->prepare("UPDATE student_profiles SET contact_email=?, address=?, phone_mobile=?, phone_landline=? WHERE user_id=?");
         $stmt->execute([$input['email']??'', $input['address']??'', $input['mobile']??'', $input['landline']??'', $user_id]);
         
@@ -225,9 +208,7 @@ try {
         exit;
     }
 
-    // =========================================================================
-    // ACTION: SAVE NEMERTES LINK (NEW)
-    // =========================================================================
+    // ACTION: Save Nemertes Link
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'save_nemertes') {
         $in = json_decode(file_get_contents('php://input'), true);
         
@@ -251,13 +232,11 @@ try {
         exit;
     }
 
-    // =========================================================================
-    // ACTION: GET EXAM REPORT DATA (NEW)
-    // =========================================================================
+    // ACTION: Get Exam Report Data
     if ($_SERVER['REQUEST_METHOD'] === 'GET' && $action === 'get_exam_report') {
         $tid = $_GET['thesis_id'];
 
-        // 1. Get Thesis Info (including GA Protocol & Final Grade)
+        // 1. Get Thesis Info (including Protocol & Final Grade)
         $stmt = $pdo->prepare("
             SELECT t.title, t.final_grade, t.general_assembly_protocol,
                    u.first_name as student_first, u.last_name as student_last, sp.student_am

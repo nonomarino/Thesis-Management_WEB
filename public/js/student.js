@@ -1,5 +1,3 @@
-// public/js/student.js
-
 let currentThesisData = null;
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -112,14 +110,14 @@ async function loadMyThesis() {
         // File Display
         let fileHtml = t.file_path ? `<a href="../public/uploads/${t.file_path}" target="_blank" style="color:#007bff;"><i class="fas fa-paperclip"></i> ${t.file_path}</a>` : `<span style="color:#777;">Κανένα αρχείο</span>`;
 
-        // --- NEW LOGIC FOR EXAM REPORT & NEMERTES ---
+        // Exam report and Nemertes link
         let examReportHtml = '';
         let nemertesFormHtml = '';
 
         // Εμφάνιση Πρακτικού & Νημερτή ΜΟΝΟ αν υπάρχει βαθμός
         if (t.final_grade) {
             
-            // 1. Κουμπί Προβολής Πρακτικού
+            // 1. Button Display HTML Report
             examReportHtml = `
                 <div style="margin-top:20px; padding:15px; background:#fff3e0; border:1px solid #ffe0b2; border-radius:5px;">
                     <h4 style="margin-top:0; color:#e65100;"><i class="fas fa-certificate"></i> Αποτελέσματα Εξέτασης</h4>
@@ -130,7 +128,7 @@ async function loadMyThesis() {
                 </div>
             `;
 
-            // 2. Φόρμα Νημερτή (Αν δεν έχει συμπληρωθεί ήδη ή αν είναι completed)
+            // 2. Display Nemertes Form
             if (t.status === 'under_examination' || t.repository_link) {
                 let existingLink = t.repository_link || '';
                 let isLocked = t.status === 'completed' ? 'disabled' : '';
@@ -175,7 +173,7 @@ async function loadMyThesis() {
     } catch (err) { console.error(err); }
 }
 
-// Νέα Συνάρτηση: Αποθήκευση Link Νημερτή
+//  Save Nemertes Link 
 window.saveNemertesLink = async function(id) {
     const link = document.getElementById('nemertes-link').value;
     if(!link) return alert("Παρακαλώ εισάγετε τον σύνδεσμο.");
@@ -192,9 +190,8 @@ window.saveNemertesLink = async function(id) {
     } catch(e) { console.error(e); }
 }
 
-// Νέα Συνάρτηση: Προβολή Πρακτικού (HTML Report)
+// HTML Report
 window.viewExamReport = async function(id) {
-    // Ανοίγουμε νέο παράθυρο και γεμίζουμε με HTML
     const win = window.open('', '_blank');
     win.document.write('<p>Φόρτωση Πρακτικού...</p>');
 
@@ -205,7 +202,7 @@ window.viewExamReport = async function(id) {
         if(!data.success) { win.document.body.innerHTML = 'Error'; return; }
 
         const t = data.thesis;
-        const grades = data.grades || []; // Expecting [{lname:'Avouris', grade:10}, ...]
+        const grades = data.grades || []; 
 
         let gradesHtml = '';
         grades.forEach(g => {
@@ -270,10 +267,7 @@ window.viewExamReport = async function(id) {
     } catch(e) { win.document.body.innerHTML = 'System Error'; }
 }
 
-// =============================================================================
 // MANAGE THESIS PAGE
-// =============================================================================
-
 window.renderManageThesisPage = async function() {
     if (!currentThesisData) return;
 
@@ -283,7 +277,7 @@ window.renderManageThesisPage = async function() {
     const manageContent = document.getElementById('manage-content');
     manageContent.innerHTML = '<p>Φόρτωση...</p>';
 
-    // --- CASE 1: Assigned ---
+    //CASE 1: Assigned
     if (currentThesisData.status === 'assigned') {
         try {
             const invitesRes = await fetch(`../api/student.php?action=get_thesis_invites&thesis_id=${currentThesisData.id}&t=` + Date.now());
@@ -317,7 +311,7 @@ window.renderManageThesisPage = async function() {
         } catch (err) { console.error(err); manageContent.innerHTML = '<p style="color:red">Σφάλμα φόρτωσης.</p>'; }
     }
 
-    // --- CASE 2: Under Examination ---
+    //CASE 2: Under Examination
     else if (currentThesisData.status === 'under_examination') {
         const draftFile = currentThesisData.draft_file_path;
         const links = currentThesisData.external_links || '';
@@ -386,7 +380,7 @@ window.renderManageThesisPage = async function() {
     }
 }
 
-// --- HELPER FUNCTIONS ---
+// Helper Functions
 
 window.toggleExamMethodFields = function() {
     const method = document.getElementById('exam-method').value;
@@ -402,7 +396,6 @@ window.toggleExamMethodFields = function() {
     }
 }
 
-// --- NEW UNIFIED SAVE FUNCTION ---
 window.saveAllUnderExamData = async function() {
     // 1. Gather Data
     const fileInput = document.getElementById('draft-file-input');
@@ -424,7 +417,7 @@ window.saveAllUnderExamData = async function() {
     btn.disabled = true;
 
     try {
-        // STEP 1: Upload File (Only if selected)
+        // 1: Upload File (Only if selected)
         if (fileInput.files.length > 0) {
             const fd = new FormData();
             fd.append('thesis_id', currentThesisData.id);
@@ -435,7 +428,7 @@ window.saveAllUnderExamData = async function() {
             if(!dataFile.success) throw new Error("File Upload Failed: " + dataFile.error);
         }
 
-        // STEP 2: Save Links
+        // 2: Save Links
         const resLinks = await fetch('../api/student.php?action=save_links', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
@@ -444,7 +437,7 @@ window.saveAllUnderExamData = async function() {
         const dataLinks = await resLinks.json();
         if(!dataLinks.success) throw new Error("Links Save Failed");
 
-        // STEP 3: Save Exam Details
+        // 3: Save Exam Details
         const resExam = await fetch('../api/student.php?action=save_exam_details', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},

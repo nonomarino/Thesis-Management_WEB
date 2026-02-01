@@ -1,8 +1,8 @@
 <?php
-// api/seed.php
+
 require 'db.php';
 
-// Default password for everyone: "12345"
+// Default password: "12345"
 $password = password_hash("12345", PASSWORD_DEFAULT);
 
 echo "<h2>Seeding Database...</h2>";
@@ -41,7 +41,7 @@ try {
         $stmt->execute([$email, $password, $fname, $lname]);
         $user_id = $pdo->lastInsertId();
 
-        // If user was inserted (not duplicate), add profile
+        // If user was inserted (not duplicate) --> add profile
         if ($user_id) {
             $am = "up" . (1000 + $i);
             $stmtProfile = $pdo->prepare("INSERT INTO student_profiles (user_id, student_am, address, phone_mobile) VALUES (?, ?, 'Patras City', '6900000000')");

@@ -3,8 +3,6 @@
 session_start();
 header('Content-Type: application/json'); // Always return JSON
 require 'db.php';
-
-// Helper to send JSON response
 function sendJson($data, $code = 200) {
     http_response_code($code);
     echo json_encode($data);
@@ -38,13 +36,13 @@ if ($method === 'POST') {
     }
 }
 
-// 2. LOGOUT (GET ?action=logout)
+// 2. LOGOUT 
 if ($method === 'GET' && isset($_GET['action']) && $_GET['action'] === 'logout') {
     session_destroy();
     sendJson(['success' => true]);
 }
 
-// 3. CHECK SESSION (GET ?action=check)
+// 3. CHECK SESSION 
 // Used by frontend to see if user is already logged in
 if ($method === 'GET' && isset($_GET['action']) && $_GET['action'] === 'check') {
     if (isset($_SESSION['user_id'])) {

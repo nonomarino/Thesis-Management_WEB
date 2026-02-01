@@ -4,7 +4,7 @@ session_start();
 header('Content-Type: application/json');
 require 'db.php';
 
-// 1. Security Check
+// Security Check
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'secretariat') {
     http_response_code(403);
     echo json_encode(['error' => 'Unauthorized']);
@@ -15,9 +15,7 @@ $action = $_GET['action'] ?? '';
 
 try {
 
-    // =================================================================================
     // 1. LIST THESES (Active & Under Examination)
-    // =================================================================================
     if ($_SERVER['REQUEST_METHOD'] === 'GET' && $action === 'list_theses') {
         $stmt = $pdo->prepare("
             SELECT t.id, t.title, t.status, t.assigned_at,
@@ -51,14 +49,11 @@ try {
         exit;
     }
 
-    // =================================================================================
-    // 2. GET DETAILS (For Modal) - UPDATED
-    // =================================================================================
+    // 2. GET DETAILS (For Modal)
     if ($_SERVER['REQUEST_METHOD'] === 'GET' && $action === 'get_thesis_details') {
         $id = $_GET['id'] ?? 0;
         
         // A. Basic Info (Thesis + Student + Supervisor)
-        // Fetches repository_link, description, final_grade etc. via t.*
         $stmt = $pdo->prepare("
             SELECT t.*, 
                    u.first_name as student_first, u.last_name as student_last, u.username as student_email, sp.student_am,
@@ -78,7 +73,6 @@ try {
         }
 
         // B. Committee Members (The 2 other members)
-        // Fetching from 'committee_members' table using 'professor_id'
         $committee = [];
         try {
             $stmt = $pdo->prepare("
@@ -114,11 +108,8 @@ try {
         exit;
     }
 
-    // =================================================================================
-    // 3. ACTIONS
-    // =================================================================================
-    
-    // Update Protocol (Α.Π.)
+    // 3. ACTIONΣ
+    // Update Protocol Number (Α.Π.)
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'update_protocol') {
         $in = json_decode(file_get_contents('php://input'), true);
         if (empty($in['protocol'])) { echo json_encode(['success'=>false]); exit; }
@@ -149,11 +140,11 @@ try {
         exit;
     }
 
-    // Finalize (Set to Completed)
+    // Περάτωση (Set to Completed)
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'finalize_thesis') {
         $in = json_decode(file_get_contents('php://input'), true);
         
-        // Optional Check: Ensure Grade and Link exist before finalizing
+        // Ensure Grade and Link exist before finalizing
         $chk = $pdo->prepare("SELECT final_grade, repository_link FROM theses WHERE id = ?");
         $chk->execute([$in['id']]);
         $t = $chk->fetch();
