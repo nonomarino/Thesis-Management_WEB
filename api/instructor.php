@@ -38,14 +38,7 @@ try {
         $filePath = null;
 
         if (isset($_FILES['pdf_file']) && $_FILES['pdf_file']['error'] === UPLOAD_ERR_OK) {
-            $ext = pathinfo($_FILES['pdf_file']['name'], PATHINFO_EXTENSION);
-            
-            // --- ΝΕΑ ΟΝΟΜΑΤΟΔΟΣΙΑ (DESC_instr...) ---
-            // Μορφή: DESC_instr[ID]_[YYYYMMDD-HHMM]_[RANDOM].pdf
-            $timestamp = date('Ymd-Hi');
-            $randomHash = substr(uniqid(), -5);
-            $newFileName = "DESC_instr{$user_id}_{$timestamp}_{$randomHash}." . $ext;
-
+            $newFileName = uniqid('thesis_') . '.pdf';
             if (!is_dir('../public/uploads/')) mkdir('../public/uploads/', 0777, true);
             if (move_uploaded_file($_FILES['pdf_file']['tmp_name'], '../public/uploads/' . $newFileName)) {
                 $filePath = $newFileName;
@@ -64,14 +57,7 @@ try {
         $desc  = $_POST['description'] ?? '';
         
         if (isset($_FILES['pdf_file']) && $_FILES['pdf_file']['error'] === UPLOAD_ERR_OK) {
-            $ext = pathinfo($_FILES['pdf_file']['name'], PATHINFO_EXTENSION);
-
-            // --- ΝΕΑ ΟΝΟΜΑΤΟΔΟΣΙΑ (DESC_topic...) ---
-            // Μορφή: DESC_topic[ID]_[YYYYMMDD-HHMM]_[RANDOM].pdf
-            $timestamp = date('Ymd-Hi');
-            $randomHash = substr(uniqid(), -5);
-            $newFileName = "DESC_topic{$id}_{$timestamp}_{$randomHash}." . $ext;
-
+            $newFileName = uniqid('thesis_') . '.pdf';
             if (move_uploaded_file($_FILES['pdf_file']['tmp_name'], '../public/uploads/' . $newFileName)) {
                 $stmt = $pdo->prepare("UPDATE theses SET title = ?, description = ?, file_path = ? WHERE id = ? AND supervisor_id = ?");
                 $stmt->execute([$title, $desc, $newFileName, $id, $user_id]);
@@ -84,20 +70,8 @@ try {
         exit;
     }
 
-    // ACTION: Delete topic
     elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'delete_topic') {
         $id = $_POST['id'] ?? '';
-
-        // Check if topic exists
-        $check = $pdo->prepare("SELECT status FROM theses WHERE id = ? AND supervisor_id = ?");
-        $check->execute([$id, $user_id]);
-        $topic = $check->fetch();
-
-        if (!$topic) {
-            echo json_encode(['success' => false, 'error' => 'Topic not found']);
-            exit;
-        }
-
         $stmt = $pdo->prepare("DELETE FROM theses WHERE id = ? AND supervisor_id = ?");
         $stmt->execute([$id, $user_id]);
         echo json_encode(['success' => true]);
@@ -140,7 +114,7 @@ try {
             $pdo->prepare("INSERT INTO thesis_logs (thesis_id, action) VALUES (?, 'Assigned to student by Instructor')")->execute([$thesis_id]);
             echo json_encode(['success' => true]);
         } else {
-            echo json_encode(['success' => false, 'error' => 'Η ανάθεση απέτυχε. Ελέγξτε αν το θέμα είναι δικό σας.']);
+            echo json_encode(['success' => false, 'error' => 'Assignment failed.']);
         }
         exit;
     }
