@@ -1,7 +1,7 @@
 // public/js/instructor.js
 
 let currentTopics = []; 
-let allThesesList = []; // For export
+let allThesesList = []; 
 
 // Helper Functions for Translation
 function getGreekStatus(status) {
@@ -48,7 +48,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // =============================================================
-// 1. TOPICS MANAGEMENT (YOUR ORIGINAL LOGIC - KEPT)
+// 1. TOPICS MANAGEMENT (HOME TAB)
 // =============================================================
 
 window.loadMyTopics = async function() {
@@ -82,7 +82,6 @@ window.loadMyTopics = async function() {
                             <th>Κατάσταση</th>
                             <th>Ανατέθηκε σε</th>
                             <th>Ημ/νία</th>
-                            <th>Αρχείο</th>
                             <th>Ενέργειες</th>
                         </tr>
                     </thead>
@@ -90,40 +89,54 @@ window.loadMyTopics = async function() {
         `;
 
         if(currentTopics.length === 0) {
-            html += '<tr><td colspan="6" style="padding:30px; text-align:center; font-style:italic;">Δεν έχετε δημιουργήσει θέματα ακόμα.</td></tr>';
+            html += '<tr><td colspan="5" style="padding:30px; text-align:center; font-style:italic;">Δεν έχετε δημιουργήσει θέματα ακόμα.</td></tr>';
         } else {
             currentTopics.forEach(t => {
                 const studentName = t.first_name ? `${t.first_name} ${t.last_name}` : '-';
+                const statusGreek = getGreekStatus(t.status);
                 
-                // Status Logic
-                let statusBadge = '';
-                if(t.status === 'assigned') statusBadge = '<span class="badge" style="background:#3498db; color:white;">Υπό ανάθεση</span>';
-                else if(t.status === 'active') statusBadge = '<span class="badge" style="background:#28a745; color:white;">Ενεργή</span>';
-                else if(t.status === 'completed') statusBadge = '<span class="badge" style="background:#2ecc71; color:white;">Ολοκληρωμένη</span>';
-                else statusBadge = '<span class="badge" style="background:#95a5a6; color:white;">Ελεύθερο</span>';
+                let badgeColor = '#95a5a6'; // gray
+                if(t.status === 'assigned') badgeColor = '#3498db';
+                else if(t.status === 'active') badgeColor = '#28a745';
+                else if(t.status === 'under_examination') badgeColor = '#f39c12'; // orange
+                else if(t.status === 'completed') badgeColor = '#2ecc71';
 
-                let fileLink = '-';
-                if (t.file_path) {
-                    fileLink = `<a href="../public/uploads/${t.file_path}" target="_blank" style="color:#3498db; text-decoration:none;"><i class="fas fa-paperclip"></i> PDF</a>`;
-                }
+                const statusBadge = `<span class="badge" style="background:${badgeColor}; color:white;">${statusGreek}</span>`;
 
-                // Actions
                 let actions = `
                     <button class="btn" onclick="renderTopicForm(${t.id})" title="Επεξεργασία" style="background-color: #fff; color: #34495e; border:1px solid #bdc3c7; padding:4px 8px; font-size:12px;">
                         <i class="fas fa-edit"></i>
                     </button>
                 `;
                 
-                if (t.student_id) {
+                if (t.student_id && t.status === 'assigned') {
                     actions += `
-                        <button class="btn" onclick="revokeAssignment(${t.id})" title="Αναίρεση" style="background-color: #fff; color: #e74c3c; border:1px solid #e74c3c; padding:4px 8px; font-size:12px; margin-left:5px;">
+                        <button class="btn" onclick="revokeAssignment(${t.id})" title="Αναίρεση Ανάθεσης" style="background-color: #fff; color: #e74c3c; border:1px solid #e74c3c; padding:4px 8px; font-size:12px; margin-left:5px;">
                             <i class="fas fa-user-slash"></i>
                         </button>
                     `;
-                } else {
+                } else if (!t.student_id) {
                     actions += `
                         <button class="btn" onclick="deleteTopic(${t.id})" title="Διαγραφή" style="background-color: #fff; color: #e74c3c; border:1px solid #e74c3c; padding:4px 8px; font-size:12px; margin-left:5px;">
                             <i class="fas fa-trash"></i>
+                        </button>
+                    `;
+                }
+
+                // ** BUTTON: View Supervisor Review Page (Only for Under Examination) **
+                if (t.status === 'under_examination') {
+                    actions += `
+                        <button class="btn" onclick="renderSupervisorReviewPage(${t.id})" title="Επισκόπηση Υλικού Εξέτασης" style="background-color: #e3f2fd; color: #2196f3; border:1px solid #2196f3; padding:4px 8px; font-size:12px; margin-left:5px;">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                    `;
+                }
+
+                // ** NEW: Promote to Exam Button (Only for Active) **
+                if (t.status === 'active') {
+                    actions += `
+                        <button class="btn" onclick="promoteToExam(${t.id})" title="Αλλαγή σε 'Υπό Εξέταση'" style="background-color: #fef9e7; color: #f39c12; border:1px solid #f39c12; padding:4px 8px; font-size:12px; margin-left:5px;">
+                            <i class="fas fa-step-forward"></i>
                         </button>
                     `;
                 }
@@ -134,7 +147,6 @@ window.loadMyTopics = async function() {
                         <td>${statusBadge}</td>
                         <td>${studentName}</td>
                         <td>${new Date(t.created_at).toLocaleDateString()}</td>
-                        <td>${fileLink}</td>
                         <td>${actions}</td>
                     </tr>
                 `;
@@ -148,6 +160,175 @@ window.loadMyTopics = async function() {
         console.error(err);
         mainContent.innerHTML = '<p>System Error.</p>';
     }
+}
+
+// NEW FUNCTION: Promote to Under Examination
+window.promoteToExam = async function(id) {
+    if(!confirm("Να αλλάξει η κατάσταση σε 'Υπό Εξέταση'; Αυτό θα επιτρέψει στον φοιτητή να αναρτήσει το υλικό.")) return;
+    
+    const formData = new FormData();
+    formData.append('thesis_id', id);
+    
+    try {
+        const res = await fetch('../api/instructor.php?action=promote_to_exam', { method: 'POST', body: formData });
+        const data = await res.json();
+        if(data.success) {
+            alert("Η κατάσταση άλλαξε επιτυχώς!");
+            loadMyTopics();
+        } else {
+            alert("Σφάλμα: " + data.error);
+        }
+    } catch(err) { console.error(err); alert("System Error"); }
+}
+
+// *** SUPERVISOR REVIEW PAGE with ANNOUNCEMENT GENERATOR ***
+window.renderSupervisorReviewPage = function(id) {
+    const topic = currentTopics.find(t => t.id == id);
+    if (!topic) return;
+
+    const mainContent = document.getElementById('main-content');
+
+    let examInfoHtml = '<p style="color:#777;">Δεν έχει οριστεί ημερομηνία εξέτασης.</p>';
+    let canGenerateAnnouncement = false;
+
+    if (topic.exam_date) {
+        canGenerateAnnouncement = true;
+        const dt = new Date(topic.exam_date).toLocaleString('el-GR', { 
+            dateStyle: 'full', timeStyle: 'short', hour12: false 
+        });
+        const method = topic.exam_method === 'online' ? 'Διαδικτυακά' : 'Δια ζώσης';
+        examInfoHtml = `
+            <div style="font-size:15px; margin-top:10px;">
+                <div style="margin-bottom:8px;"><strong>📅 Ημερομηνία:</strong> ${dt}</div>
+                <div style="margin-bottom:8px;"><strong>📍 Τρόπος:</strong> ${method}</div>
+                <div><strong>🏫 Τοποθεσία/Link:</strong> ${topic.exam_location || '-'}</div>
+            </div>
+        `;
+    }
+
+    let draftHtml = '<p style="color:#777; font-style:italic;">Δεν έχει αναρτηθεί πρόχειρο κείμενο.</p>';
+    if (topic.draft_file_path) {
+        draftHtml = `
+            <a href="../public/uploads/${topic.draft_file_path}" target="_blank" style="display:flex; align-items:center; gap:10px; padding:15px; background:#f8f9fa; border:1px solid #dee2e6; border-radius:5px; text-decoration:none; color:#2c3e50; font-weight:600; transition:all 0.2s;">
+                <i class="fas fa-file-pdf" style="font-size:24px; color:#e74c3c;"></i>
+                <span>Προβολή Πρόχειρου Κειμένου (Draft)</span>
+            </a>
+        `;
+    }
+
+    let linksHtml = '<p style="color:#777;">Δεν υπάρχουν σύνδεσμοι.</p>';
+    if (topic.external_links) {
+        linksHtml = `<div style="background:#f9f9f9; padding:15px; border-radius:5px; border:1px solid #eee; white-space:pre-wrap; font-family:monospace;">${topic.external_links}</div>`;
+    }
+
+    let announceBtnHtml = '';
+    if(canGenerateAnnouncement) {
+        announceBtnHtml = `
+            <div style="text-align:right; margin-top:20px; border-top:1px solid #eee; padding-top:15px;">
+                <button class="btn btn-primary" onclick="generateAnnouncement(${id})">
+                    <i class="fas fa-bullhorn"></i> Παραγωγή Ανακοίνωσης
+                </button>
+            </div>
+        `;
+    }
+
+    mainContent.innerHTML = `
+        <button class="btn" style="background:#ecf0f1; color:#2c3e50; margin-bottom:20px;" onclick="loadMyTopics()">
+            <i class="fas fa-arrow-left"></i> Πίσω στη Λίστα
+        </button>
+
+        <h2 class="section-title">Επισκόπηση Υλικού Εξέτασης</h2>
+        <p style="font-size:16px; margin-bottom:30px;">Θέμα: <strong>${topic.title}</strong> | Φοιτητής: ${topic.first_name} ${topic.last_name}</p>
+
+        <div style="display:flex; gap:30px; flex-wrap:wrap;">
+            
+            <div class="card" style="flex:1; min-width:300px; border-top:4px solid #3498db;">
+                <h3 style="margin-top:0; color:#2c3e50; border-bottom:1px solid #eee; padding-bottom:10px;">
+                    <i class="fas fa-calendar-alt"></i> Στοιχεία Παρουσίασης
+                </h3>
+                ${examInfoHtml}
+                ${announceBtnHtml}
+            </div>
+
+            <div class="card" style="flex:1.5; min-width:300px; border-top:4px solid #27ae60;">
+                <h3 style="margin-top:0; color:#2c3e50; border-bottom:1px solid #eee; padding-bottom:10px;">
+                    <i class="fas fa-folder-open"></i> Υλικό Φοιτητή
+                </h3>
+                
+                <div style="margin-bottom:25px;">
+                    <h4 style="font-size:14px; color:#7f8c8d; text-transform:uppercase;">1. Αρχείο Κειμένου</h4>
+                    ${draftHtml}
+                </div>
+
+                <div>
+                    <h4 style="font-size:14px; color:#7f8c8d; text-transform:uppercase;">2. Συνοδευτικό Υλικό (Links)</h4>
+                    ${linksHtml}
+                </div>
+            </div>
+        </div>
+        
+        <div id="announce-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999; align-items:center; justify-content:center;">
+            <div style="background:white; width:600px; max-width:90%; padding:25px; border-radius:8px; box-shadow:0 5px 20px rgba(0,0,0,0.3);">
+                <h3 style="margin-top:0;">Κείμενο Ανακοίνωσης</h3>
+                <textarea id="announce-text" style="width:100%; height:200px; font-family:monospace; padding:10px; border:1px solid #ccc; border-radius:5px;" readonly></textarea>
+                <div style="text-align:right; margin-top:15px; display:flex; justify-content:flex-end; gap:10px;">
+                    <button class="btn btn-secondary" onclick="document.getElementById('announce-modal').style.display='none'">Κλείσιμο</button>
+                    <button class="btn btn-primary" onclick="copyAnnouncement()"><i class="fas fa-copy"></i> Αντιγραφή</button>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+window.generateAnnouncement = async function(id) {
+    try {
+        const res = await fetch(`../api/instructor.php?action=get_thesis_details&id=${id}`);
+        const data = await res.json();
+        
+        if(!data.success) { alert("Error fetching details"); return; }
+        
+        const t = data.thesis;
+        const committee = data.committee || [];
+        
+        let membersStr = `${t.sup_first} ${t.sup_last} (Επιβλέπων)`;
+        committee.forEach(m => {
+            if(m.invitation_status === 'accepted') {
+                membersStr += `, ${m.first_name} ${m.last_name}`;
+            }
+        });
+
+        const dt = new Date(t.exam_date).toLocaleString('el-GR', { dateStyle: 'full', timeStyle: 'short' });
+        const method = t.exam_method === 'online' ? 'Διαδικτυακά' : 'Δια ζώσης';
+
+        const text = 
+`ΠΑΡΟΥΣΙΑΣΗ ΔΙΠΛΩΜΑΤΙΚΗΣ ΕΡΓΑΣΙΑΣ
+
+Ονοματεπώνυμο Φοιτητή: ${t.student_first} ${t.student_last}
+Θέμα: ${t.title}
+
+Τριμελής Επιτροπή:
+${membersStr}
+
+Ημερομηνία: ${dt}
+Τρόπος Εξέτασης: ${method}
+Τοποθεσία / Σύνδεσμος: ${t.exam_location}
+
+Περίληψη:
+${t.description}
+`;
+
+        document.getElementById('announce-text').value = text;
+        document.getElementById('announce-modal').style.display = 'flex';
+
+    } catch(e) { console.error(e); alert("System Error"); }
+}
+
+window.copyAnnouncement = function() {
+    const copyText = document.getElementById("announce-text");
+    copyText.select();
+    copyText.setSelectionRange(0, 99999); 
+    navigator.clipboard.writeText(copyText.value);
+    alert("Το κείμενο αντιγράφηκε!");
 }
 
 // B. FORM RENDERER
@@ -240,9 +421,7 @@ window.deleteTopic = async function(id) {
     } catch(err) { console.error(err); }
 }
 
-// =============================================================
-// 2. ASSIGNMENT PAGE (YOUR ORIGINAL LOGIC - KEPT)
-// =============================================================
+// 2. ASSIGNMENT PAGE
 window.renderAssignmentPage = async function() {
     const mainContent = document.getElementById('main-content');
     mainContent.innerHTML = '<h3>Φόρτωση...</h3>';
@@ -362,13 +541,10 @@ window.revokeAssignment = async function(id) {
     renderAssignmentPage();
 }
 
-// =============================================================
-// 3. LIST ALL THESES & DETAILS (FULL FEATURED + TRANSLATIONS)
-// =============================================================
+// 3. LIST ALL THESES & DETAILS
 window.renderThesesListPage = function() {
     const mainContent = document.getElementById('main-content');
     
-    // UPDATED: Small dropdowns, Cancelled status added, and Modal structure
     mainContent.innerHTML = `
         <h2 class="section-title">Λίστα Διπλωματικών</h2>
         <div style="background:white; padding:15px; border-radius:8px; display:flex; gap:15px; align-items:center; box-shadow:0 1px 3px rgba(0,0,0,0.1); margin-bottom:20px;">
@@ -433,11 +609,8 @@ window.fetchThesesWithFilters = async function() {
             <thead><tr><th>Τίτλος</th><th>Φοιτητής</th><th>Ρόλος</th><th>Κατάσταση</th><th></th></tr></thead><tbody>`;
         
         allThesesList.forEach(t => {
-            // Apply Translation here
             const roleGreek = getGreekRole(t.my_role);
             const statusGreek = getGreekStatus(t.status);
-            
-            // Color Badge for Role
             const roleColor = t.my_role === 'supervisor' ? '#2c3e50' : '#95a5a6';
 
             html += `<tr>
@@ -452,7 +625,6 @@ window.fetchThesesWithFilters = async function() {
     } catch(e) { console.error(e); container.innerHTML = 'Error loading list.'; }
 }
 
-// THIS FIXES THE "CAN'T SEE ANYTHING" BUG AND MATCHES YOUR DB COLUMNS
 window.openThesisModal = async function(id) {
     document.getElementById('thesis-modal').style.display = 'flex';
     const c = document.getElementById('modal-content');
@@ -463,7 +635,6 @@ window.openThesisModal = async function(id) {
         const d = await res.json();
         const t = d.thesis;
         
-        // Committee List (Using Invites table from API)
         let commHtml = '<p style="color:#777; font-style:italic;">Δεν έχουν οριστεί ακόμα.</p>';
         if(d.committee && d.committee.length > 0) {
             commHtml = '<ul style="list-style:none; padding:0;">' + 
@@ -475,14 +646,12 @@ window.openThesisModal = async function(id) {
             `).join('') + '</ul>';
         }
         
-        // Logs List (Using 'action' and 'timestamp' as per your DB)
         let logsHtml = '<p style="color:#777;">Κανένα ιστορικό.</p>';
         if(d.logs && d.logs.length > 0) {
             logsHtml = '<ul style="font-size:0.9em; color:#555; max-height:150px; overflow-y:auto;">' + 
             d.logs.map(l => `<li><strong>${l.timestamp}:</strong> ${l.action}</li>`).join('') + '</ul>';
         }
 
-        // Final Info (Repository Link & Grade & Minutes)
         let finalInfo = '';
         if (t.status === 'completed' || t.status === 'under_examination') {
             finalInfo = `
@@ -524,9 +693,7 @@ window.exportData = function(fmt) {
     const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='export.'+fmt; a.click();
 }
 
-// =============================================================
-// 4. INVITES (ADDED NEW LOGIC)
-// =============================================================
+// 4. INVITES
 window.renderInvitesPage = async function() {
     const mainContent = document.getElementById('main-content');
     mainContent.innerHTML = 'Loading...';

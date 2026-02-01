@@ -18,12 +18,17 @@ try {
     // =================================================================================
     // SECTION 1: TOPIC MANAGEMENT
     // =================================================================================
+    
+    // ACTION: List my topics
     if ($_SERVER['REQUEST_METHOD'] === 'GET' && $action === 'list_my_topics') {
         $stmt = $pdo->prepare("
             SELECT t.id, t.title, t.description, t.status, t.created_at, t.file_path, t.student_id,
+                   t.draft_file_path, t.external_links,
+                   te.exam_date, te.exam_method, te.exam_location,
                    u.first_name, u.last_name
             FROM theses t
             LEFT JOIN users u ON t.student_id = u.id
+            LEFT JOIN thesis_exam te ON t.id = te.thesis_id
             WHERE t.supervisor_id = ? 
             ORDER BY t.created_at DESC
         ");
@@ -38,7 +43,11 @@ try {
         $filePath = null;
 
         if (isset($_FILES['pdf_file']) && $_FILES['pdf_file']['error'] === UPLOAD_ERR_OK) {
-            $newFileName = uniqid('thesis_') . '.pdf';
+            $ext = pathinfo($_FILES['pdf_file']['name'], PATHINFO_EXTENSION);
+            $timestamp = date('Ymd-Hi');
+            $randomHash = substr(uniqid(), -5);
+            $newFileName = "DESC_instr{$user_id}_{$timestamp}_{$randomHash}." . $ext;
+
             if (!is_dir('../public/uploads/')) mkdir('../public/uploads/', 0777, true);
             if (move_uploaded_file($_FILES['pdf_file']['tmp_name'], '../public/uploads/' . $newFileName)) {
                 $filePath = $newFileName;
@@ -57,7 +66,11 @@ try {
         $desc  = $_POST['description'] ?? '';
         
         if (isset($_FILES['pdf_file']) && $_FILES['pdf_file']['error'] === UPLOAD_ERR_OK) {
-            $newFileName = uniqid('thesis_') . '.pdf';
+            $ext = pathinfo($_FILES['pdf_file']['name'], PATHINFO_EXTENSION);
+            $timestamp = date('Ymd-Hi');
+            $randomHash = substr(uniqid(), -5);
+            $newFileName = "DESC_topic{$id}_{$timestamp}_{$randomHash}." . $ext;
+
             if (move_uploaded_file($_FILES['pdf_file']['tmp_name'], '../public/uploads/' . $newFileName)) {
                 $stmt = $pdo->prepare("UPDATE theses SET title = ?, description = ?, file_path = ? WHERE id = ? AND supervisor_id = ?");
                 $stmt->execute([$title, $desc, $newFileName, $id, $user_id]);
@@ -75,6 +88,28 @@ try {
         $stmt = $pdo->prepare("DELETE FROM theses WHERE id = ? AND supervisor_id = ?");
         $stmt->execute([$id, $user_id]);
         echo json_encode(['success' => true]);
+        exit;
+    }
+
+    // *** NEW ACTION: PROMOTE TO UNDER EXAMINATION (SUPERVISOR ONLY) ***
+    elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'promote_to_exam') {
+        $thesis_id = $_POST['thesis_id'];
+        
+        // Check ownership and current status
+        $check = $pdo->prepare("SELECT id FROM theses WHERE id = ? AND supervisor_id = ? AND status = 'active'");
+        $check->execute([$thesis_id, $user_id]);
+        
+        if ($check->fetch()) {
+            $stmt = $pdo->prepare("UPDATE theses SET status = 'under_examination' WHERE id = ?");
+            $stmt->execute([$thesis_id]);
+            
+            // Log action
+            $pdo->prepare("INSERT INTO thesis_logs (thesis_id, action) VALUES (?, 'Promoted to Under Examination by Supervisor')")->execute([$thesis_id]);
+            
+            echo json_encode(['success' => true]);
+        } else {
+            echo json_encode(['success' => false, 'error' => 'Η ενέργεια δεν επιτρέπεται (λάθος κατάσταση ή μη εξουσιοδότηση).']);
+        }
         exit;
     }
 
@@ -135,7 +170,6 @@ try {
         $roleFilter = $_GET['role'] ?? 'all';
         $statusFilter = $_GET['status'] ?? 'all';
         
-        // Updated to include committee_invites in the check for 'member' role
         $sql = "
             SELECT DISTINCT t.id, t.title, t.status, t.final_grade, t.created_at,
                    u.first_name as student_name, u.last_name as student_surname,
@@ -178,14 +212,15 @@ try {
     elseif ($_SERVER['REQUEST_METHOD'] === 'GET' && $action === 'get_thesis_details') {
         $tid = $_GET['id'] ?? 0;
         
-        // 1. Thesis Info
         $stmt = $pdo->prepare("
             SELECT t.id, t.title, t.description, t.status, t.final_grade, t.repository_link, t.created_at,
                    u.first_name as student_first, u.last_name as student_last, u.username as student_email,
-                   sup.first_name as sup_first, sup.last_name as sup_last
+                   sup.first_name as sup_first, sup.last_name as sup_last,
+                   te.exam_date, te.exam_method, te.exam_location
             FROM theses t
             LEFT JOIN users u ON t.student_id = u.id
             LEFT JOIN users sup ON t.supervisor_id = sup.id
+            LEFT JOIN thesis_exam te ON t.id = te.thesis_id
             WHERE t.id = ?
         ");
         $stmt->execute([$tid]);
@@ -196,7 +231,6 @@ try {
             exit;
         }
 
-        // 2. Committee Info (From committee_invites where accepted)
         $stmt = $pdo->prepare("
             SELECT u.first_name, u.last_name, u.username as email, ci.status as invitation_status
             FROM committee_invites ci
@@ -206,7 +240,6 @@ try {
         $stmt->execute([$tid]);
         $committee = $stmt->fetchAll();
         
-        // 3. Logs
         $stmt = $pdo->prepare("SELECT action, timestamp FROM thesis_logs WHERE thesis_id = ? ORDER BY timestamp DESC");
         $stmt->execute([$tid]);
         $logs = $stmt->fetchAll();
@@ -221,10 +254,9 @@ try {
     }
 
     // =================================================================================
-    // SECTION 4: INVITATIONS (Handling Student Choices)
+    // SECTION 4: INVITATIONS
     // =================================================================================
     elseif ($_SERVER['REQUEST_METHOD'] === 'GET' && $action === 'list_pending_invites') {
-        // Fetch invites from 'committee_invites' table
         $stmt = $pdo->prepare("
             SELECT ci.id as invite_id, ci.created_at as invitation_date, 
                    t.title, u.first_name, u.last_name
@@ -240,35 +272,24 @@ try {
 
     elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'respond_invite') {
         $inviteId = $_POST['invite_id'];
-        $response = $_POST['response']; // 'accepted' or 'rejected'
+        $response = $_POST['response']; 
 
-        // Update the status in committee_invites
         $stmt = $pdo->prepare("UPDATE committee_invites SET status = ? WHERE id = ? AND professor_id = ?");
         $stmt->execute([$response, $inviteId, $user_id]);
 
-        // Logic: If accepted, check if committee is full (2 members)
         if ($response === 'accepted') {
             $stmt = $pdo->prepare("SELECT thesis_id FROM committee_invites WHERE id = ?");
             $stmt->execute([$inviteId]);
             $thesisId = $stmt->fetchColumn();
 
-            // Count accepted invites for this thesis
             $stmt = $pdo->prepare("SELECT COUNT(*) FROM committee_invites WHERE thesis_id = ? AND status = 'accepted'");
             $stmt->execute([$thesisId]);
             $count = $stmt->fetchColumn();
 
-            // Rule: If 2 members accepted -> Activate Thesis
             if ($count >= 2) {
-                // 1. Set Status to Active
                 $pdo->prepare("UPDATE theses SET status = 'active', activated_at = NOW() WHERE id = ?")->execute([$thesisId]);
-                
-                // 2. Log Action
                 $pdo->prepare("INSERT INTO thesis_logs (thesis_id, action) VALUES (?, 'Thesis Activated (Committee Filled)')")->execute([$thesisId]);
-                
-                // 3. Cancel any other pending invites for this thesis
                 $pdo->prepare("UPDATE committee_invites SET status = 'cancelled' WHERE thesis_id = ? AND status = 'pending'")->execute([$thesisId]);
-                
-                // 4. (Optional) Sync to committee_members table if your DB uses it separately
                 $pdo->prepare("INSERT INTO committee_members (thesis_id, professor_id) SELECT thesis_id, professor_id FROM committee_invites WHERE thesis_id = ? AND status = 'accepted'")->execute([$thesisId]);
             }
         }
