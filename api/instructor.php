@@ -446,30 +446,60 @@ try {
         exit;
     }
 
-    // 2. Submit Grade (Using instructor_id)
+   // 2. Submit Grade (Using instructor_id)
     elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'submit_grade') {
         $tid = $_POST['thesis_id'];
         $grade = $_POST['grade'];
 
-        // Verify if user is supervisor OR committee member
-        // (Checking both tables to be safe based on your previous code)
+        // A. Έλεγχος Δικαιωμάτων (Επιβλέπων ή Μέλος)
         $isSup = $pdo->prepare("SELECT id FROM theses WHERE id=? AND supervisor_id=?"); 
         $isSup->execute([$tid, $user_id]);
         
-        // Note: Assuming committee table uses professor_id, but we insert into grades using instructor_id
         $isMem = $pdo->prepare("SELECT id FROM committee_invites WHERE thesis_id=? AND professor_id=? AND status='accepted'"); 
         $isMem->execute([$tid, $user_id]);
 
         if (!$isSup->fetch() && !$isMem->fetch()) {
-            echo json_encode(['success'=>false, 'error'=>'Unauthorized']); exit;
+            echo json_encode(['success'=>false, 'error'=>'Δεν έχετε δικαίωμα βαθμολόγησης σε αυτή τη διπλωματική.']); 
+            exit;
         }
 
-        // Insert using instructor_id
+        // B. Καταχώρηση του Ατομικού Βαθμού
+        // Χρησιμοποιούμε ON DUPLICATE KEY UPDATE ώστε αν ο καθηγητής ξαναστείλει βαθμό, να διορθωθεί ο παλιός
         $sql = "INSERT INTO thesis_grades (thesis_id, instructor_id, grade, submitted_at) VALUES (?, ?, ?, NOW()) 
                 ON DUPLICATE KEY UPDATE grade = VALUES(grade), submitted_at = NOW()";
         $pdo->prepare($sql)->execute([$tid, $user_id, $grade]);
 
+        // Log action
         $pdo->prepare("INSERT INTO thesis_logs (thesis_id, action, timestamp) VALUES (?, 'Grade submitted', NOW())")->execute([$tid]);
+
+        // =================================================================
+        // C. ΑΥΤΟΜΑΤΟΣ ΥΠΟΛΟΓΙΣΜΟΣ ΤΕΛΙΚΟΥ ΒΑΘΜΟΥ (TRIGGER LOGIC)
+        // =================================================================
+        
+        // 1. Μετράμε πόσοι καθηγητές έχουν βαθμολογήσει
+        $stmtCount = $pdo->prepare("SELECT COUNT(*) FROM thesis_grades WHERE thesis_id = ?");
+        $stmtCount->execute([$tid]);
+        $gradesCount = $stmtCount->fetchColumn();
+
+        // 2. Αν έχουν βαθμολογήσει και οι 3 (Τριμελής Επιτροπή)
+        if ($gradesCount >= 3) {
+            // Υπολογισμός Μέσου Όρου
+            $stmtAvg = $pdo->prepare("SELECT AVG(grade) FROM thesis_grades WHERE thesis_id = ?");
+            $stmtAvg->execute([$tid]);
+            $average = $stmtAvg->fetchColumn();
+            
+            // Στρογγυλοποίηση σε 2 δεκαδικά (π.χ. 8.33)
+            $finalGrade = round($average, 2);
+
+            // Ενημέρωση του πίνακα 'theses' με τον τελικό βαθμό
+            // Αυτό είναι το κλειδί για να το δει ο φοιτητής!
+            $stmtUpdate = $pdo->prepare("UPDATE theses SET final_grade = ? WHERE id = ?");
+            $stmtUpdate->execute([$finalGrade, $tid]);
+
+            // Καταγραφή στο log ότι βγήκε ο τελικός βαθμός
+            $pdo->prepare("INSERT INTO thesis_logs (thesis_id, action, timestamp) VALUES (?, 'Final Grade Calculated Automatically', NOW())")->execute([$tid]);
+        }
+        // =================================================================
 
         echo json_encode(['success' => true]);
         exit;
