@@ -81,16 +81,26 @@ async function loadMyThesis() {
     try {
         const response = await fetch('../api/student.php?action=get_my_thesis&t=' + new Date().getTime());
         const data = await response.json();
-        if (!data.success) { contentDiv.innerHTML = `<p style="color:red">Error</p>`; return; }
+        
+        if (!data.success) { contentDiv.innerHTML = `<p style="color:red">Error loading data.</p>`; return; }
         
         currentThesisData = data.thesis; 
         const t = data.thesis;
 
-        if (!t) { contentDiv.innerHTML = `<div style="text-align:center; padding:40px; color:#777;"><p>Δεν σας έχει ανατεθεί θέμα.</p></div>`; return; }
+        if (!t) { 
+            contentDiv.innerHTML = `<div style="text-align:center; padding:40px; color:#777;"><p>Δεν σας έχει ανατεθεί θέμα.</p></div>`; 
+            return; 
+        }
 
-        let statusText = t.status === 'assigned' ? 'Υπό ανάθεση' : (t.status === 'active' ? 'Ενεργή' : (t.status === 'under_examination' ? 'Υπό Εξέταση' : (t.status === 'completed' ? 'Περατωμένη' : t.status)));
-        let badgeClass = t.status === 'assigned' ? 'bg-gray' : (t.status === 'active' ? 'bg-blue' : (t.status === 'under_examination' ? 'bg-blue' : 'bg-green'));
+        // Status Handling
+        let statusText = t.status;
+        let badgeClass = 'bg-gray';
+        if(t.status === 'assigned') { statusText = 'Υπό Ανάθεση'; badgeClass = 'bg-gray'; }
+        else if(t.status === 'active') { statusText = 'Ενεργή'; badgeClass = 'bg-blue'; }
+        else if(t.status === 'under_examination') { statusText = 'Υπό Εξέταση'; badgeClass = 'bg-orange'; }
+        else if(t.status === 'completed') { statusText = 'Περατωμένη'; badgeClass = 'bg-green'; }
 
+        // Committee List
         let committeeHtml = `<ul style="margin:5px 0; padding-left:20px;"><li><strong>${t.sup_first} ${t.sup_last}</strong> (Επιβλέπων)</li>`;
         if (data.committee && data.committee.length > 0) {
             data.committee.forEach(m => committeeHtml += `<li>${m.first_name} ${m.last_name} (Μέλος)</li>`);
@@ -99,36 +109,165 @@ async function loadMyThesis() {
         }
         committeeHtml += '</ul>';
 
-        // Exam Info Display
-        let examInfo = '';
-        if(t.exam_date) {
-            const dt = new Date(t.exam_date).toLocaleString('el-GR');
-            const method = t.exam_method === 'online' ? 'Διαδικτυακά' : 'Δια ζώσης';
-            examInfo = `<div style="margin-top:15px; padding:10px; background:#e3f2fd; border-radius:5px;">
-                            <strong>Προγραμματισμένη Εξέταση:</strong><br>
-                            📅 ${dt}<br>
-                            📍 ${method} (${t.exam_location})
-                        </div>`;
-        }
+        // File Display
+        let fileHtml = t.file_path ? `<a href="../public/uploads/${t.file_path}" target="_blank" style="color:#007bff;"><i class="fas fa-paperclip"></i> ${t.file_path}</a>` : `<span style="color:#777;">Κανένα αρχείο</span>`;
 
-        let fileHtml = t.file_path ? `<a href="../public/uploads/${t.file_path}" target="_blank" style="color:#007bff; text-decoration:none;"><i class="fas fa-paperclip"></i> ${t.file_path}</a>` : `<span style="color:#777;">Κανένα αρχείο</span>`;
+        // --- NEW LOGIC FOR EXAM REPORT & NEMERTES ---
+        let examReportHtml = '';
+        let nemertesFormHtml = '';
+
+        // Εμφάνιση Πρακτικού & Νημερτή ΜΟΝΟ αν υπάρχει βαθμός
+        if (t.final_grade) {
+            
+            // 1. Κουμπί Προβολής Πρακτικού
+            examReportHtml = `
+                <div style="margin-top:20px; padding:15px; background:#fff3e0; border:1px solid #ffe0b2; border-radius:5px;">
+                    <h4 style="margin-top:0; color:#e65100;"><i class="fas fa-certificate"></i> Αποτελέσματα Εξέτασης</h4>
+                    <p>Η εξέταση ολοκληρώθηκε. Ο τελικός βαθμός σας είναι: <strong style="font-size:18px;">${t.final_grade}</strong></p>
+                    <button class="btn btn-primary" onclick="viewExamReport(${t.id})">
+                        <i class="fas fa-file-alt"></i> Προβολή Πρακτικού Εξέτασης (HTML)
+                    </button>
+                </div>
+            `;
+
+            // 2. Φόρμα Νημερτή (Αν δεν έχει συμπληρωθεί ήδη ή αν είναι completed)
+            if (t.status === 'under_examination' || t.repository_link) {
+                let existingLink = t.repository_link || '';
+                let isLocked = t.status === 'completed' ? 'disabled' : '';
+                let btnDisplay = t.status === 'completed' ? 'none' : 'inline-block';
+
+                nemertesFormHtml = `
+                    <div style="margin-top:20px; padding:15px; background:#e8f5e9; border:1px solid #c8e6c9; border-radius:5px;">
+                        <h4 style="margin-top:0; color:#2e7d32;"><i class="fas fa-book"></i> Κατάθεση στο Νημερτής</h4>
+                        <p style="font-size:13px;">Παρακαλώ καταχωρήστε τον σύνδεσμο της διπλωματικής σας από το αποθετήριο.</p>
+                        <div class="input-group">
+                            <input type="url" id="nemertes-link" class="custom-input" value="${existingLink}" placeholder="https://nemertes.library.upatras.gr/..." ${isLocked}>
+                            <button class="btn btn-success" onclick="saveNemertesLink(${t.id})" style="margin-top:10px; display:${btnDisplay}">
+                                <i class="fas fa-save"></i> Αποθήκευση
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+        // ------------------------------------------------
 
         contentDiv.innerHTML = `
             <div class="info-row"><span class="label">Θέμα:</span><span class="value" style="font-size:20px;">${t.title}</span></div>
             <div class="info-row"><span class="label">Περιγραφή:</span><p style="background:#f9f9f9; padding:10px;">${t.description}</p></div>
             <div class="info-row"><span class="label">Συνημμένο Αρχείο:</span>${fileHtml}</div>
             <hr style="border-top:1px solid #eee; margin:15px 0;">
+            
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
                 <div><span class="label">Τρέχουσα Κατάσταση:</span><span class="badge ${badgeClass}">${statusText}</span></div>
                 <div><span class="label">Χρόνος από Ανάθεση:</span><span class="value"><i class="far fa-clock"></i> ${data.time_elapsed}</span></div>
             </div>
-            ${examInfo}
+
             <div class="info-row" style="margin-top:20px;"><span class="label">Τριμελής Επιτροπή:</span>${committeeHtml}</div>
+
+            ${examReportHtml}
+            ${nemertesFormHtml}
+
             <div style="text-align:right; margin-top:30px; border-top:1px solid #eee; padding-top:20px;">
                 <button class="btn btn-primary" onclick="renderManageThesisPage()"><i class="fas fa-cog"></i> Διαχείριση / Ενέργειες</button>
             </div>
         `;
     } catch (err) { console.error(err); }
+}
+
+// Νέα Συνάρτηση: Αποθήκευση Link Νημερτή
+window.saveNemertesLink = async function(id) {
+    const link = document.getElementById('nemertes-link').value;
+    if(!link) return alert("Παρακαλώ εισάγετε τον σύνδεσμο.");
+
+    try {
+        const res = await fetch('../api/student.php?action=save_nemertes', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ thesis_id: id, repository_link: link })
+        });
+        const data = await res.json();
+        if(data.success) { alert("Αποθηκεύτηκε!"); loadMyThesis(); }
+        else alert("Σφάλμα: " + data.error);
+    } catch(e) { console.error(e); }
+}
+
+// Νέα Συνάρτηση: Προβολή Πρακτικού (HTML Report)
+window.viewExamReport = async function(id) {
+    // Ανοίγουμε νέο παράθυρο και γεμίζουμε με HTML
+    const win = window.open('', '_blank');
+    win.document.write('<p>Φόρτωση Πρακτικού...</p>');
+
+    try {
+        const res = await fetch(`../api/student.php?action=get_exam_report&thesis_id=${id}`);
+        const data = await res.json();
+        
+        if(!data.success) { win.document.body.innerHTML = 'Error'; return; }
+
+        const t = data.thesis;
+        const grades = data.grades || []; // Expecting [{lname:'Avouris', grade:10}, ...]
+
+        let gradesHtml = '';
+        grades.forEach(g => {
+            gradesHtml += `<tr><td style="padding:10px; border-bottom:1px solid #eee;">${g.first_name} ${g.last_name}</td><td style="padding:10px; border-bottom:1px solid #eee; font-weight:bold;">${g.grade}</td></tr>`;
+        });
+
+        const reportHtml = `
+            <html>
+            <head>
+                <title>Πρακτικό Εξέτασης - ${t.title}</title>
+                <style>
+                    body { font-family: 'Times New Roman', serif; padding: 40px; max-width: 800px; margin: 0 auto; }
+                    .header { text-align: center; margin-bottom: 40px; border-bottom: 2px solid #333; padding-bottom: 20px; }
+                    .title { font-size: 18px; font-weight: bold; text-align: center; margin: 20px 0; }
+                    .info-table { width: 100%; margin-bottom: 30px; border-collapse: collapse; }
+                    .info-table td { padding: 8px; vertical-align: top; }
+                    .grades-table { width: 100%; border: 1px solid #333; border-collapse: collapse; margin-top: 20px; }
+                    .grades-table th { background: #f0f0f0; border: 1px solid #333; padding: 10px; text-align: left; }
+                    .grades-table td { border: 1px solid #333; padding: 10px; }
+                    .footer { margin-top: 50px; display: flex; justify-content: space-between; }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <h2>ΠΑΝΕΠΙΣΤΗΜΙΟ ΠΑΤΡΩΝ</h2>
+                    <h3>ΤΜΗΜΑ ΜΗΧΑΝΙΚΩΝ Η/Υ & ΠΛΗΡΟΦΟΡΙΚΗΣ</h3>
+                    <p>ΠΡΑΚΤΙΚΟ ΕΞΕΤΑΣΗΣ ΔΙΠΛΩΜΑΤΙΚΗΣ ΕΡΓΑΣΙΑΣ</p>
+                </div>
+
+                <p>Σήμερα, <strong>${new Date().toLocaleDateString('el-GR')}</strong>, συνήλθε η Τριμελής Εξεταστική Επιτροπή.</p>
+                
+                <table class="info-table">
+                    <tr><td width="30%"><strong>Ονοματεπώνυμο Φοιτητή:</strong></td><td>${t.student_first} ${t.student_last}</td></tr>
+                    <tr><td><strong>Αριθμός Μητρώου:</strong></td><td>${t.student_am || '-'}</td></tr>
+                    <tr><td><strong>Τίτλος Θέματος:</strong></td><td>${t.title}</td></tr>
+                    <tr><td><strong>Αρ. Πρωτ. ΓΣ Ανάθεσης:</strong></td><td>${t.general_assembly_protocol || '<span style="color:red">[Εκκρεμεί από Γραμματεία]</span>'}</td></tr>
+                </table>
+
+                <p>Η Επιτροπή εξέτασε τον φοιτητή και βαθμολόγησε ως εξής:</p>
+
+                <table class="grades-table">
+                    <thead><tr><th>Μέλος Επιτροπής</th><th>Βαθμός</th></tr></thead>
+                    <tbody>
+                        ${gradesHtml}
+                        <tr style="background:#f9f9f9;">
+                            <td style="text-align:right;"><strong>ΤΕΛΙΚΟΣ ΒΑΘΜΟΣ (Μ.Ο.):</strong></td>
+                            <td style="font-size:18px; font-weight:bold;">${t.final_grade}</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <div class="footer">
+                    <div>Ο Επιβλέπων<br><br>(Υπογραφή)</div>
+                    <div>Τα Μέλη<br><br>(Υπογραφές)</div>
+                </div>
+            </body>
+            </html>
+        `;
+        
+        win.document.write(reportHtml);
+
+    } catch(e) { win.document.body.innerHTML = 'System Error'; }
 }
 
 // =============================================================================

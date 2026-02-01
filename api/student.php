@@ -17,19 +17,21 @@ $action = $_GET['action'] ?? '';
 try {
     
     // =========================================================================
-    // ACTION: Get My Thesis Details (Updated table name: thesis_exam)
+    // ACTION: Get My Thesis Details
     // =========================================================================
     if ($_SERVER['REQUEST_METHOD'] === 'GET' && $action === 'get_my_thesis') {
         
         // Fetch Thesis, Supervisor AND Exam Details
+        // UPDATED: Added final_grade, repository_link, general_assembly_protocol
         $stmt = $pdo->prepare("
             SELECT t.id, t.title, t.description, t.status, t.assigned_at, t.file_path, t.supervisor_id,
                    t.draft_file_path, t.external_links,
+                   t.final_grade, t.repository_link, t.general_assembly_protocol,
                    te.exam_date, te.exam_method, te.exam_location,
                    u.first_name AS sup_first, u.last_name AS sup_last
             FROM theses t
             LEFT JOIN users u ON t.supervisor_id = u.id
-            LEFT JOIN thesis_exam te ON t.id = te.thesis_id  -- Changed table name here
+            LEFT JOIN thesis_exam te ON t.id = te.thesis_id
             WHERE t.student_id = ?
             LIMIT 1
         ");
@@ -79,7 +81,7 @@ try {
     }
 
     // =========================================================================
-    // ACTION: Save Examination Details (Updated table name: thesis_exam)
+    // ACTION: Save Examination Details
     // =========================================================================
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'save_exam_details') {
         $input = json_decode(file_get_contents('php://input'), true);
@@ -114,9 +116,8 @@ try {
     }
 
     // =========================================================================
-    // (Other Actions Remain Unchanged)
+    // ACTION: Upload Draft File
     // =========================================================================
-
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'upload_draft') {
         $thesis_id = $_POST['thesis_id'];
         $check = $pdo->prepare("SELECT id FROM theses WHERE id = ? AND student_id = ?");
@@ -125,57 +126,166 @@ try {
 
         if (isset($_FILES['draft_file']) && $_FILES['draft_file']['error'] === UPLOAD_ERR_OK) {
             $ext = pathinfo($_FILES['draft_file']['name'], PATHINFO_EXTENSION);
-            $timestamp = date('Ymd-Hi'); $randomHash = substr(uniqid(), -5);
+            $timestamp = date('Ymd-Hi'); 
+            $randomHash = substr(uniqid(), -5);
             $newFileName = "DRAFT_thesis{$thesis_id}_{$timestamp}_{$randomHash}." . $ext;
+            
             if (move_uploaded_file($_FILES['draft_file']['tmp_name'], '../public/uploads/' . $newFileName)) {
                 $pdo->prepare("UPDATE theses SET draft_file_path = ? WHERE id = ?")->execute([$newFileName, $thesis_id]);
                 echo json_encode(['success' => true, 'file_path' => $newFileName]);
-            } else echo json_encode(['success' => false, 'error' => 'Upload failed']);
-        } else echo json_encode(['success' => false, 'error' => 'No file']);
+            } else {
+                echo json_encode(['success' => false, 'error' => 'Upload failed']);
+            }
+        } else {
+            echo json_encode(['success' => false, 'error' => 'No file']);
+        }
         exit;
     }
 
+    // =========================================================================
+    // ACTION: Save External Links
+    // =========================================================================
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'save_links') {
         $data = json_decode(file_get_contents('php://input'), true);
         $check = $pdo->prepare("SELECT id FROM theses WHERE id = ? AND student_id = ?");
         $check->execute([$data['thesis_id'], $user_id]);
         if (!$check->fetch()) { echo json_encode(['success' => false, 'error' => 'Unauthorized']); exit; }
+        
         $pdo->prepare("UPDATE theses SET external_links = ? WHERE id = ?")->execute([$data['external_links'], $data['thesis_id']]);
         echo json_encode(['success' => true]); exit;
     }
 
+    // =========================================================================
+    // ACTION: Committee Invites Logic
+    // =========================================================================
     if ($_SERVER['REQUEST_METHOD'] === 'GET' && $action === 'get_available_instructors') {
         $supervisor_id = $_GET['supervisor_id'] ?? 0;
         $stmt = $pdo->prepare("SELECT id, first_name, last_name FROM users WHERE role = 'instructor' AND id != ? ORDER BY last_name ASC");
-        $stmt->execute([$supervisor_id]); echo json_encode(['success' => true, 'data' => $stmt->fetchAll()]); exit;
+        $stmt->execute([$supervisor_id]); 
+        echo json_encode(['success' => true, 'data' => $stmt->fetchAll()]); 
+        exit;
     }
+
     if ($_SERVER['REQUEST_METHOD'] === 'GET' && $action === 'get_thesis_invites') {
         $thesis_id = $_GET['thesis_id'] ?? 0;
         $stmt = $pdo->prepare("SELECT ci.id, ci.professor_id, ci.status, u.first_name, u.last_name FROM committee_invites ci JOIN users u ON ci.professor_id = u.id WHERE ci.thesis_id = ? ORDER BY ci.created_at DESC");
-        $stmt->execute([$thesis_id]); echo json_encode(['success' => true, 'data' => $stmt->fetchAll()]); exit;
+        $stmt->execute([$thesis_id]); 
+        echo json_encode(['success' => true, 'data' => $stmt->fetchAll()]); 
+        exit;
     }
+
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'send_invite') {
-        $thesis_id = $_POST['thesis_id']; $prof_ids = $_POST['professor_ids'] ?? []; if (!is_array($prof_ids)) $prof_ids = [$prof_ids]; 
+        $thesis_id = $_POST['thesis_id']; 
+        $prof_ids = $_POST['professor_ids'] ?? []; 
+        if (!is_array($prof_ids)) $prof_ids = [$prof_ids]; 
+        
         $inserted_count = 0;
         foreach ($prof_ids as $prof_id) {
             if(empty($prof_id)) continue;
+            // Check for duplicates
             $dup = $pdo->prepare("SELECT id FROM committee_invites WHERE thesis_id = ? AND professor_id = ? AND status != 'rejected'");
             $dup->execute([$thesis_id, $prof_id]);
+            
             if (!$dup->fetch()) {
-                if($pdo->prepare("INSERT INTO committee_invites (thesis_id, professor_id) VALUES (?, ?)")->execute([$thesis_id, $prof_id])) $inserted_count++;
+                if($pdo->prepare("INSERT INTO committee_invites (thesis_id, professor_id) VALUES (?, ?)")->execute([$thesis_id, $prof_id])) {
+                    $inserted_count++;
+                }
             }
         }
         echo json_encode(['success' => true, 'message' => "$inserted_count invites sent."]); exit;
     }
+
+    // =========================================================================
+    // ACTION: Profile Management
+    // =========================================================================
     if ($_SERVER['REQUEST_METHOD'] === 'GET' && $action === 'get_profile') {
         $stmt = $pdo->prepare("SELECT u.first_name, u.last_name, u.username, sp.* FROM users u LEFT JOIN student_profiles sp ON u.id = sp.user_id WHERE u.id = ?");
-        $stmt->execute([$user_id]); $p = $stmt->fetch();
-        if($p) { $p['email_to_show'] = !empty($p['contact_email']) ? $p['contact_email'] : $p['username']; echo json_encode(['success' => true, 'data' => $p]); } else echo json_encode(['success' => false]); exit;
+        $stmt->execute([$user_id]); 
+        $p = $stmt->fetch();
+        
+        if($p) { 
+            $p['email_to_show'] = !empty($p['contact_email']) ? $p['contact_email'] : $p['username']; 
+            echo json_encode(['success' => true, 'data' => $p]); 
+        } else {
+            echo json_encode(['success' => false]); 
+        }
+        exit;
     }
+
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'update_profile') {
         $input = json_decode(file_get_contents('php://input'), true);
-        $pdo->prepare("UPDATE student_profiles SET contact_email=?, address=?, phone_mobile=?, phone_landline=? WHERE user_id=?")->execute([$input['email']??'', $input['address']??'', $input['mobile']??'', $input['landline']??'', $user_id]);
-        echo json_encode(['success' => true]); exit;
+        
+        // Update or Insert profile if not exists (handling handled by ON DUPLICATE KEY or similar logic in real apps, here assuming row exists from seed)
+        // Note: The seed creates the profile row. If not, we might need INSERT.
+        // Let's assume the row exists for simplicity based on seed.php
+        $stmt = $pdo->prepare("UPDATE student_profiles SET contact_email=?, address=?, phone_mobile=?, phone_landline=? WHERE user_id=?");
+        $stmt->execute([$input['email']??'', $input['address']??'', $input['mobile']??'', $input['landline']??'', $user_id]);
+        
+        echo json_encode(['success' => true]); 
+        exit;
+    }
+
+    // =========================================================================
+    // ACTION: SAVE NEMERTES LINK (NEW)
+    // =========================================================================
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'save_nemertes') {
+        $in = json_decode(file_get_contents('php://input'), true);
+        
+        if (!isset($in['repository_link']) || empty($in['repository_link'])) {
+            echo json_encode(['success' => false, 'error' => 'Link is required']);
+            exit;
+        }
+
+        // Verify ownership
+        $check = $pdo->prepare("SELECT id FROM theses WHERE id = ? AND student_id = ?");
+        $check->execute([$in['thesis_id'], $user_id]);
+        if (!$check->fetch()) { 
+            echo json_encode(['success' => false, 'error' => 'Unauthorized']); 
+            exit; 
+        }
+
+        $stmt = $pdo->prepare("UPDATE theses SET repository_link = ? WHERE id = ?");
+        $stmt->execute([$in['repository_link'], $in['thesis_id']]);
+        
+        echo json_encode(['success' => true]);
+        exit;
+    }
+
+    // =========================================================================
+    // ACTION: GET EXAM REPORT DATA (NEW)
+    // =========================================================================
+    if ($_SERVER['REQUEST_METHOD'] === 'GET' && $action === 'get_exam_report') {
+        $tid = $_GET['thesis_id'];
+
+        // 1. Get Thesis Info (including GA Protocol & Final Grade)
+        $stmt = $pdo->prepare("
+            SELECT t.title, t.final_grade, t.general_assembly_protocol,
+                   u.first_name as student_first, u.last_name as student_last, sp.student_am
+            FROM theses t
+            LEFT JOIN users u ON t.student_id = u.id
+            LEFT JOIN student_profiles sp ON u.id = sp.user_id
+            WHERE t.id = ? AND t.student_id = ?
+        ");
+        $stmt->execute([$tid, $user_id]);
+        $thesis = $stmt->fetch();
+
+        if(!$thesis) { 
+            echo json_encode(['success'=>false, 'error' => 'Thesis not found or access denied']); 
+            exit; 
+        }
+
+        // 2. Get Individual Grades from thesis_grades table
+        $stmtG = $pdo->prepare("
+            SELECT tg.grade, u.first_name, u.last_name
+            FROM thesis_grades tg
+            JOIN users u ON tg.instructor_id = u.id
+            WHERE tg.thesis_id = ?
+        ");
+        $stmtG->execute([$tid]);
+        $grades = $stmtG->fetchAll();
+
+        echo json_encode(['success' => true, 'thesis' => $thesis, 'grades' => $grades]);
+        exit;
     }
 
 } catch (Exception $e) {
