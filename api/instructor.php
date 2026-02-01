@@ -324,6 +324,31 @@ try {
         $stmt->execute([$tid]);
         $logs = $stmt->fetchAll();
         
+        // --- ADD THIS BLOCK FOR GRADING ---
+        $grades = [];
+        try {
+            $stmt = $pdo->prepare("
+                SELECT tg.grade, tg.submitted_at, u.first_name, u.last_name, u.id as prof_id 
+                FROM thesis_grades tg 
+                JOIN users u ON tg.instructor_id = u.id 
+                WHERE tg.thesis_id = ?
+            ");
+            $stmt->execute([$tid]);
+            $grades = $stmt->fetchAll();
+        } catch (Exception $e) { }
+        // ----------------------------------
+
+        // UPDATE your echo line to include 'grades' and 'current_user_id':
+        echo json_encode([
+            'success' => true, 
+            'thesis' => $thesis, 
+            'committee' => $committee, 
+            'logs' => $logs, 
+            'grades' => $grades,             // <--- Add this
+            'current_user_id' => $user_id    // <--- Add this
+        ]);
+        exit;
+
         echo json_encode([
             'success' => true, 
             'thesis' => $thesis, 
@@ -401,6 +426,55 @@ try {
         exit;
     }
 
+    // =============================================================
+    // NEW: GRADING SYSTEM ACTIONS
+    // =============================================================
+    
+    // 1. Enable Grading (Supervisor only)
+    elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'enable_grading') {
+        $tid = $_POST['thesis_id'];
+        
+        // Verify Supervisor
+        $chk = $pdo->prepare("SELECT id FROM theses WHERE id = ? AND supervisor_id = ?");
+        $chk->execute([$tid, $user_id]);
+        if (!$chk->fetch()) { echo json_encode(['success'=>false, 'error'=>'Not supervisor']); exit; }
+
+        $pdo->prepare("UPDATE theses SET status = 'under_examination' WHERE id = ?")->execute([$tid]);
+        $pdo->prepare("INSERT INTO thesis_logs (thesis_id, action, timestamp) VALUES (?, 'Grading Enabled by Supervisor', NOW())")->execute([$tid]);
+        
+        echo json_encode(['success' => true]);
+        exit;
+    }
+
+    // 2. Submit Grade (Using instructor_id)
+    elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'submit_grade') {
+        $tid = $_POST['thesis_id'];
+        $grade = $_POST['grade'];
+
+        // Verify if user is supervisor OR committee member
+        // (Checking both tables to be safe based on your previous code)
+        $isSup = $pdo->prepare("SELECT id FROM theses WHERE id=? AND supervisor_id=?"); 
+        $isSup->execute([$tid, $user_id]);
+        
+        // Note: Assuming committee table uses professor_id, but we insert into grades using instructor_id
+        $isMem = $pdo->prepare("SELECT id FROM committee_invites WHERE thesis_id=? AND professor_id=? AND status='accepted'"); 
+        $isMem->execute([$tid, $user_id]);
+
+        if (!$isSup->fetch() && !$isMem->fetch()) {
+            echo json_encode(['success'=>false, 'error'=>'Unauthorized']); exit;
+        }
+
+        // Insert using instructor_id
+        $sql = "INSERT INTO thesis_grades (thesis_id, instructor_id, grade, submitted_at) VALUES (?, ?, ?, NOW()) 
+                ON DUPLICATE KEY UPDATE grade = VALUES(grade), submitted_at = NOW()";
+        $pdo->prepare($sql)->execute([$tid, $user_id, $grade]);
+
+        $pdo->prepare("INSERT INTO thesis_logs (thesis_id, action, timestamp) VALUES (?, 'Grade submitted', NOW())")->execute([$tid]);
+
+        echo json_encode(['success' => true]);
+        exit;
+    }
+    
 } catch (Exception $e) {
     http_response_code(500);
     echo json_encode(['error' => $e->getMessage()]);

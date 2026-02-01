@@ -728,21 +728,83 @@ window.openThesisModal = async function(id) {
             `;
         }
         
-        c.innerHTML = `
-            <h3 style="color:#2c3e50; margin-top:0;">${t.title}</h3>
-            <p><strong>Φοιτητής:</strong> ${t.student_first} ${t.student_last} (<a href="mailto:${t.student_email}">${t.student_email}</a>)</p>
-            <p><strong>Επιβλέπων:</strong> ${t.sup_first} ${t.sup_last}</p>
-            <p><strong>Κατάσταση:</strong> ${getGreekStatus(t.status)}</p>
-            <p style="background:#f9f9f9; padding:10px; border-radius:4px;">${t.description}</p>
-            
-            ${finalInfo}
+        // --- START GRADING LOGIC PASTE ---
+        const myId = d.current_user_id; 
+        const isSupervisor = (t.supervisor_id == myId);
+        let gradingHtml = '';
 
-            <h4 style="border-bottom:2px solid #3498db; padding-bottom:5px; color:#3498db; margin-top:20px;">Τριμελής Επιτροπή</h4>
+        // 1. If Active & Supervisor -> Show Enable Button
+        if (t.status === 'active' && isSupervisor) {
+            gradingHtml = `
+                <div style="background:#fff3cd; padding:15px; border-radius:5px; margin-top:20px; border:1px solid #ffeeba;">
+                    <h4 style="margin-top:0;">Ενέργειες Επιβλέποντα</h4>
+                    <p>Η διπλωματική είναι Ενεργή. Μπορείτε να ενεργοποιήσετε τη βαθμολόγηση.</p>
+                    <button class="btn btn-primary" onclick="enableGrading(${t.id})">Ενεργοποίηση Βαθμολόγησης</button>
+                </div>
+            `;
+        }
+
+        // 2. If Under Exam or Completed -> Show Grades & Form
+        if (t.status === 'under_examination' || t.status === 'completed') {
+            
+            // List existing grades
+            let gradesList = '<ul style="margin-top:10px;">';
+            if (d.grades && d.grades.length > 0) {
+                d.grades.forEach(g => {
+                    gradesList += `<li>${g.first_name} ${g.last_name}: <strong>${g.grade}</strong> <small style="color:#777;">(${g.submitted_at})</small></li>`;
+                });
+            } else {
+                gradesList += '<li>Κανένας βαθμός ακόμα.</li>';
+            }
+            gradesList += '</ul>';
+
+            // My Grading Form (only if under exam)
+            let inputForm = '';
+            if (t.status === 'under_examination') {
+                // Find if I already graded
+                const myGradeEntry = (d.grades || []).find(g => g.prof_id == myId);
+                const myGradeVal = myGradeEntry ? myGradeEntry.grade : '';
+
+                inputForm = `
+                    <div style="margin-top:15px; border-top:1px solid #ddd; padding-top:10px;">
+                        <label><strong>Η Βαθμολογία μου (0-10):</strong></label>
+                        <div style="display:flex; gap:10px; align-items:center; margin-top:5px;">
+                            <input type="number" id="grade-input" class="custom-input" style="width:100px;" step="0.5" min="0" max="10" value="${myGradeVal}">
+                            <button class="btn btn-primary" style="background:#28a745;" onclick="submitGrade(${t.id})">Καταχώρηση</button>
+                        </div>
+                        <small style="color:#666;">Αναλυτικά βάσει κριτηρίων ΤΜΗΥΠ.</small>
+                    </div>
+                `;
+            }
+
+            gradingHtml = `
+                <div style="background:#e8f5e9; padding:15px; border-radius:5px; margin-top:20px; border:1px solid #c3e6cb;">
+                    <h4 style="margin-top:0;">Βαθμολογία Τριμελούς</h4>
+                    ${gradesList}
+                    ${inputForm}
+                </div>
+            `;
+        }
+        // --- END GRADING LOGIC PASTE ---
+
+       c.innerHTML = `
+            <h3 style="color:#2c3e50; margin-top:0;">${t.title}</h3>
+            
+            <div style="background:#f8f9fa; padding:15px; border-radius:5px; margin-bottom:15px;">
+                <p><strong>Φοιτητής:</strong> ${t.first_name || '-'} ${t.last_name || ''} (<a href="mailto:${t.student_email}">${t.student_email || '-'}</a>)</p>
+                <p><strong>Επιβλέπων:</strong> ${t.sup_first} ${t.sup_last}</p>
+                <p><strong>Κατάσταση:</strong> ${getGreekStatus(t.status)}</p>
+                <p><strong>Περιγραφή:</strong> ${t.description}</p>
+                ${t.external_links ? `<p><strong>Links:</strong> ${t.external_links}</p>` : ''}
+            </div>
+            
+            ${finalInfo}   ${gradingHtml} <h4 style="border-bottom:2px solid #3498db; padding-bottom:5px; color:#3498db; margin-top:20px;">Τριμελής Επιτροπή</h4>
             ${commHtml}
             
             <h4 style="border-bottom:2px solid #3498db; padding-bottom:5px; color:#3498db; margin-top:20px;">Ιστορικό</h4>
             ${logsHtml}
         `;
+        
     } catch(e) { console.error(e); }
 }
 
@@ -807,4 +869,47 @@ window.renderStatsPage = async () => {
             <p>Μ.Ο. Βαθμών: ${s.grade}</p>
         </div>
     `;
+}
+
+// ==========================================
+// NEW: GRADING HELPER FUNCTIONS
+// ==========================================
+
+window.enableGrading = async function(id) {
+    if(!confirm("Είστε σίγουρος ότι θέλετε να ενεργοποιήσετε τη βαθμολόγηση;")) return;
+    
+    const fd = new FormData(); 
+    fd.append('thesis_id', id);
+    
+    try {
+        const res = await fetch('../api/instructor.php?action=enable_grading', {method:'POST', body:fd});
+        const d = await res.json();
+        if(d.success) {
+            alert("Η βαθμολόγηση ενεργοποιήθηκε.");
+            openThesisModal(id); // Reload modal to show form
+            // Optional: loadMyTopics() if you want to refresh list
+        } else {
+            alert("Error: " + (d.error || "Unknown"));
+        }
+    } catch(e) { console.error(e); }
+}
+
+window.submitGrade = async function(id) {
+    const val = document.getElementById('grade-input').value;
+    if(val === '' || val < 0 || val > 10) return alert("Εισάγετε έγκυρο βαθμό (0-10).");
+    
+    const fd = new FormData(); 
+    fd.append('thesis_id', id); 
+    fd.append('grade', val);
+    
+    try {
+        const res = await fetch('../api/instructor.php?action=submit_grade', {method:'POST', body:fd});
+        const d = await res.json();
+        if(d.success) {
+            alert("Ο βαθμός καταχωρήθηκε.");
+            openThesisModal(id); // Reload modal to see update
+        } else {
+            alert("Error: " + (d.error || "Unknown"));
+        }
+    } catch(e) { console.error(e); }
 }
