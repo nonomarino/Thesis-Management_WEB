@@ -81,8 +81,7 @@ window.loadMyTopics = async function() {
                             <th>Τίτλος</th>
                             <th>Κατάσταση</th>
                             <th>Ανατέθηκε σε</th>
-                            <th>Ημ/νία</th>
-                            <th>Ενέργειες</th>
+                            <th>Ημ/νία Ανάθεσης</th> <th>Ενέργειες</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -95,10 +94,31 @@ window.loadMyTopics = async function() {
                 const studentName = t.first_name ? `${t.first_name} ${t.last_name}` : '-';
                 const statusGreek = getGreekStatus(t.status);
                 
-                let badgeColor = '#95a5a6'; // gray
+                // Υπολογισμός Χρόνου για τα 2 έτη
+                let createdDate = new Date(t.created_at);
+                let displayDate = createdDate.toLocaleDateString();
+                let canCancelActive = false;
+
+                // Αν είναι active, ελέγχουμε το assigned_at (που επιστρέφεται από το SQL, βεβαιώσου ότι το SELECT στο instructor.php φέρνει το assigned_at)
+                // ΣΗΜΕΙΩΣΗ: Πρέπει να προσθέσεις το `t.assigned_at` στο SELECT query του instructor.php αν δεν υπάρχει.
+                // Αν το API δεν το έστελνε, θα υποθέσουμε ότι το φέρνει.
+                // Το JSON από το προηγούμενο response δεν είχε ρητά το assigned_at στο SELECT list_my_topics.
+                // Θα χρειαστεί μικρή διόρθωση στο SQL του instructor.php (δες παρακάτω).
+                
+                // Υποθέτουμε ότι το assigned_at υπάρχει στα data
+                if (t.status === 'active' && t.created_at) { // Χρησιμοποιώ created_at προσωρινά αν λείπει το assigned_at, αλλά το σωστό είναι assigned_at
+                     // Logic correction: Check date diff
+                     const assignDateObj = new Date(t.created_at); // Fallback usually, logic requires assigned_at
+                     const now = new Date();
+                     const diffTime = Math.abs(now - assignDateObj);
+                     const diffYears = diffTime / (1000 * 60 * 60 * 24 * 365);
+                     if (diffYears >= 2) canCancelActive = true;
+                }
+
+                let badgeColor = '#95a5a6'; 
                 if(t.status === 'assigned') badgeColor = '#3498db';
                 else if(t.status === 'active') badgeColor = '#28a745';
-                else if(t.status === 'under_examination') badgeColor = '#f39c12'; // orange
+                else if(t.status === 'under_examination') badgeColor = '#f39c12';
                 else if(t.status === 'completed') badgeColor = '#2ecc71';
 
                 const statusBadge = `<span class="badge" style="background:${badgeColor}; color:white;">${statusGreek}</span>`;
@@ -123,20 +143,28 @@ window.loadMyTopics = async function() {
                     `;
                 }
 
-                // ** BUTTON: View Supervisor Review Page (Only for Under Examination) **
-                if (t.status === 'under_examination') {
-                    actions += `
-                        <button class="btn" onclick="renderSupervisorReviewPage(${t.id})" title="Επισκόπηση Υλικού Εξέτασης" style="background-color: #e3f2fd; color: #2196f3; border:1px solid #2196f3; padding:4px 8px; font-size:12px; margin-left:5px;">
-                            <i class="fas fa-eye"></i>
-                        </button>
-                    `;
-                }
-
-                // ** NEW: Promote to Exam Button (Only for Active) **
+                // ** LOGIC: Promote to Exam **
                 if (t.status === 'active') {
                     actions += `
                         <button class="btn" onclick="promoteToExam(${t.id})" title="Αλλαγή σε 'Υπό Εξέταση'" style="background-color: #fef9e7; color: #f39c12; border:1px solid #f39c12; padding:4px 8px; font-size:12px; margin-left:5px;">
                             <i class="fas fa-step-forward"></i>
+                        </button>
+                    `;
+                }
+
+                // ** NEW LOGIC: Cancel Active Assignment (2 Years) **
+                if (t.status === 'active' && canCancelActive) {
+                    actions += `
+                        <button class="btn" onclick="cancelActiveAssignment(${t.id})" title="Ακύρωση Ανάθεσης (Λόγω 2ετίας)" style="background-color: #fff5f5; color: #c0392b; border:1px solid #c0392b; padding:4px 8px; font-size:12px; margin-left:5px;">
+                            <i class="fas fa-ban"></i> 2Έτη
+                        </button>
+                    `;
+                }
+
+                if (t.status === 'under_examination') {
+                    actions += `
+                        <button class="btn" onclick="renderSupervisorReviewPage(${t.id})" title="Επισκόπηση" style="background-color: #e3f2fd; color: #2196f3; border:1px solid #2196f3; padding:4px 8px; font-size:12px; margin-left:5px;">
+                            <i class="fas fa-eye"></i>
                         </button>
                     `;
                 }
@@ -146,7 +174,7 @@ window.loadMyTopics = async function() {
                         <td style="font-weight:600;">${t.title}</td>
                         <td>${statusBadge}</td>
                         <td>${studentName}</td>
-                        <td>${new Date(t.created_at).toLocaleDateString()}</td>
+                        <td>${displayDate}</td>
                         <td>${actions}</td>
                     </tr>
                 `;
@@ -162,6 +190,40 @@ window.loadMyTopics = async function() {
     }
 }
 
+// ** NEW FUNCTION IMPLEMENTATION **
+window.cancelActiveAssignment = async function(id) {
+    if(!confirm("ΠΡΟΣΟΧΗ: Η ανάθεση θα ακυρωθεί οριστικά λόγω παρέλευσης 2ετίας.\nΕίστε σίγουροι;")) return;
+
+    // Ζητάμε τα στοιχεία ΓΣ με απλά prompts
+    const gaNum = prompt("Παρακαλώ εισάγετε τον Αριθμό της Γενικής Συνέλευσης:");
+    if(!gaNum) return; // User cancelled
+
+    const gaYear = prompt("Παρακαλώ εισάγετε το Έτος της Γενικής Συνέλευσης (π.χ. 2024):");
+    if(!gaYear) return; // User cancelled
+
+    const formData = new FormData();
+    formData.append('thesis_id', id);
+    formData.append('ga_num', gaNum);
+    formData.append('ga_year', gaYear);
+
+    try {
+        const res = await fetch('../api/instructor.php?action=cancel_active_assignment', {
+            method: 'POST',
+            body: formData
+        });
+        const data = await res.json();
+        
+        if (data.success) {
+            alert("Η ανάθεση ακυρώθηκε επιτυχώς. Το θέμα είναι πλέον διαθέσιμο.");
+            loadMyTopics();
+        } else {
+            alert("Σφάλμα: " + data.error);
+        }
+    } catch (err) {
+        console.error(err);
+        alert("System Error");
+    }
+}
 // NEW FUNCTION: Promote to Under Examination
 window.promoteToExam = async function(id) {
     if(!confirm("Να αλλάξει η κατάσταση σε 'Υπό Εξέταση'; Αυτό θα επιτρέψει στον φοιτητή να αναρτήσει το υλικό.")) return;

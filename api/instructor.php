@@ -22,10 +22,10 @@ try {
     // ACTION: List my topics
     if ($_SERVER['REQUEST_METHOD'] === 'GET' && $action === 'list_my_topics') {
         $stmt = $pdo->prepare("
-            SELECT t.id, t.title, t.description, t.status, t.created_at, t.file_path, t.student_id,
-                   t.draft_file_path, t.external_links,
-                   te.exam_date, te.exam_method, te.exam_location,
-                   u.first_name, u.last_name
+            SELECT t.id, t.title, t.description, t.status, t.created_at, t.assigned_at, t.file_path, t.student_id,
+                t.draft_file_path, t.external_links,
+                te.exam_date, te.exam_method, te.exam_location,
+                u.first_name, u.last_name
             FROM theses t
             LEFT JOIN users u ON t.student_id = u.id
             LEFT JOIN thesis_exam te ON t.id = te.thesis_id
@@ -113,6 +113,59 @@ try {
         exit;
     }
 
+    // *** NEW ACTION: CANCEL ACTIVE ASSIGNMENT (AFTER 2 YEARS) ***
+    elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'cancel_active_assignment') {
+        $thesis_id = $_POST['thesis_id'];
+        $ga_num = $_POST['ga_num'];
+        $ga_year = $_POST['ga_year'];
+        
+        // 1. Έλεγχος: Είναι Active; Ανήκει στον καθηγητή; Πότε ανατέθηκε;
+        $stmt = $pdo->prepare("SELECT id, assigned_at FROM theses WHERE id = ? AND supervisor_id = ? AND status = 'active'");
+        $stmt->execute([$thesis_id, $user_id]);
+        $thesis = $stmt->fetch();
+
+        if (!$thesis) {
+            echo json_encode(['success' => false, 'error' => 'Η διπλωματική δεν βρέθηκε ή δεν είναι ενεργή.']);
+            exit;
+        }
+
+        // 2. Έλεγχος 2ετίας
+        $assignedDate = new DateTime($thesis['assigned_at']);
+        $now = new DateTime();
+        $interval = $assignedDate->diff($now);
+
+        if ($interval->y < 2) {
+            echo json_encode(['success' => false, 'error' => 'Δεν έχουν παρέλθει 2 έτη από την ανάθεση.']);
+            exit;
+        }
+
+        // 3. Εκτέλεση Ακύρωσης
+        // Καταχωρούμε τα στοιχεία ακύρωσης και επαναφέρουμε σε 'available'
+        $cancelRef = "$ga_num/$ga_year"; // Συνδυασμός Αριθμού/Έτους
+        
+        $update = $pdo->prepare("
+            UPDATE theses 
+            SET status = 'available', 
+                student_id = NULL, 
+                assigned_at = NULL, 
+                activated_at = NULL,
+                cancellation_reason = 'από Διδάσκοντα',
+                cancellation_assembly_ref = ?
+            WHERE id = ?
+        ");
+        $update->execute([$cancelRef, $thesis_id]);
+
+        // 4. Καθαρισμός Επιτροπών (αφού ο φοιτητής φεύγει, η επιτροπή διαλύεται)
+        $pdo->prepare("DELETE FROM committee_members WHERE thesis_id = ?")->execute([$thesis_id]);
+        $pdo->prepare("DELETE FROM committee_invites WHERE thesis_id = ?")->execute([$thesis_id]);
+
+        // 5. Log
+        $pdo->prepare("INSERT INTO thesis_logs (thesis_id, action) VALUES (?, 'Assignment Cancelled by Supervisor (2+ Years)')")->execute([$thesis_id]);
+
+        echo json_encode(['success' => true]);
+        exit;
+    }
+
     // =================================================================================
     // SECTION 2: ASSIGNMENT LOGIC
     // =================================================================================
@@ -125,13 +178,25 @@ try {
 
     elseif ($_SERVER['REQUEST_METHOD'] === 'GET' && $action === 'search_student') {
         $term = $_GET['term'] ?? '';
+        
+        // Τροποποιημένο Query:
+        // Επιλέγουμε φοιτητές που ταιριάζουν στο όνομα/ΑΜ
+        // ΚΑΙ ταυτόχρονα το ID τους ΔΕΝ υπάρχει στον πίνακα theses (σε κατάσταση που υποδηλώνει δέσμευση)
         $stmt = $pdo->prepare("
             SELECT u.id, u.first_name, u.last_name, u.username as email, sp.student_am
             FROM users u
             LEFT JOIN student_profiles sp ON u.id = sp.user_id
-            WHERE u.role = 'student' AND (u.last_name LIKE ? OR u.first_name LIKE ? OR sp.student_am LIKE ?)
+            WHERE u.role = 'student' 
+            AND (u.last_name LIKE ? OR u.first_name LIKE ? OR sp.student_am LIKE ?)
+            AND u.id NOT IN (
+                SELECT student_id 
+                FROM theses 
+                WHERE student_id IS NOT NULL 
+                AND status IN ('assigned', 'active', 'under_examination', 'completed')
+            )
             LIMIT 10
         ");
+        
         $likeTerm = "%$term%";
         $stmt->execute([$likeTerm, $likeTerm, $likeTerm]);
         echo json_encode(['success' => true, 'data' => $stmt->fetchAll()]);
@@ -156,10 +221,25 @@ try {
 
     elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'revoke_assignment') {
         $thesis_id = $_POST['thesis_id'];
+        
+        // 1. Επαναφορά της Διπλωματικής σε 'available'
         $stmt = $pdo->prepare("UPDATE theses SET student_id = NULL, status='available', assigned_at = NULL WHERE id = ? AND supervisor_id = ?");
         $stmt->execute([$thesis_id, $user_id]);
-        $pdo->prepare("INSERT INTO thesis_logs (thesis_id, action) VALUES (?, 'Assignment revoked by Instructor')")->execute([$thesis_id]);
-        echo json_encode(['success' => true]);
+        
+        if ($stmt->rowCount() > 0) {
+            // 2. Διαγραφή όλων των προσκλήσεων (pending, accepted, rejected) για αυτό το θέμα
+            $pdo->prepare("DELETE FROM committee_invites WHERE thesis_id = ?")->execute([$thesis_id]);
+
+            // 3. Διαγραφή τυχόν μελών που είχαν ήδη οριστεί (για σιγουριά)
+            $pdo->prepare("DELETE FROM committee_members WHERE thesis_id = ?")->execute([$thesis_id]);
+
+            // 4. Καταγραφή στο Log
+            $pdo->prepare("INSERT INTO thesis_logs (thesis_id, action) VALUES (?, 'Assignment revoked by Instructor - Invites cleared')")->execute([$thesis_id]);
+            
+            echo json_encode(['success' => true]);
+        } else {
+            echo json_encode(['success' => false, 'error' => 'Η ακύρωση απέτυχε ή δεν έχετε δικαίωμα.']);
+        }
         exit;
     }
 
